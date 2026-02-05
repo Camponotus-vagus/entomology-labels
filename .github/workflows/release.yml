@@ -62,14 +62,46 @@ jobs:
       - name: Build with PyInstaller (Unix)
         if: runner.os != 'Windows'
         run: |
-          pyinstaller --onefile --name entomology-labels entomology_labels/cli.py
-          pyinstaller --onefile --windowed --name entomology-labels-gui entomology_labels/gui.py
+          pyinstaller --onefile --name entomology-labels \
+            --paths . \
+            --hidden-import entomology_labels \
+            --hidden-import entomology_labels.cli \
+            --hidden-import entomology_labels.gui \
+            --hidden-import entomology_labels.label_generator \
+            --hidden-import entomology_labels.input_handlers \
+            --hidden-import entomology_labels.output_generators \
+            scripts/entomology_labels_cli.py
+          pyinstaller --onefile --windowed --name entomology-labels-gui \
+            --paths . \
+            --hidden-import entomology_labels \
+            --hidden-import entomology_labels.cli \
+            --hidden-import entomology_labels.gui \
+            --hidden-import entomology_labels.label_generator \
+            --hidden-import entomology_labels.input_handlers \
+            --hidden-import entomology_labels.output_generators \
+            scripts/entomology_labels_gui.py
 
       - name: Build with PyInstaller (Windows)
         if: runner.os == 'Windows'
         run: |
-          pyinstaller --onefile --name entomology-labels entomology_labels/cli.py
-          pyinstaller --onefile --windowed --name entomology-labels-gui entomology_labels/gui.py
+          pyinstaller --onefile --name entomology-labels `
+            --paths . `
+            --hidden-import entomology_labels `
+            --hidden-import entomology_labels.cli `
+            --hidden-import entomology_labels.gui `
+            --hidden-import entomology_labels.label_generator `
+            --hidden-import entomology_labels.input_handlers `
+            --hidden-import entomology_labels.output_generators `
+            scripts/entomology_labels_cli.py
+          pyinstaller --onefile --windowed --name entomology-labels-gui `
+            --paths . `
+            --hidden-import entomology_labels `
+            --hidden-import entomology_labels.cli `
+            --hidden-import entomology_labels.gui `
+            --hidden-import entomology_labels.label_generator `
+            --hidden-import entomology_labels.input_handlers `
+            --hidden-import entomology_labels.output_generators `
+            scripts/entomology_labels_gui.py
 
       - name: Create archive (Unix)
         if: runner.os != 'Windows'
