@@ -8,9 +8,9 @@ multiple input formats (Excel, CSV, TXT, DOCX, JSON) and output formats (HTML, P
 __version__ = "1.0.0"
 __author__ = "Entomology Labels Generator Contributors"
 
-from .label_generator import LabelGenerator, Label, LabelConfig
 from .input_handlers import load_data
-from .output_generators import generate_html, generate_pdf, generate_docx
+from .label_generator import Label, LabelConfig, LabelGenerator
+from .output_generators import generate_docx, generate_html, generate_pdf
 
 __all__ = [
     "LabelGenerator",

@@ -4,9 +4,9 @@ Core label generator module.
 Handles the generation of entomology labels with configurable dimensions and layout.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import List, Optional
-import math
 
 
 @dataclass
@@ -32,6 +32,7 @@ class LabelConfig:
         line_spacing: Line spacing multiplier (default: 1.0)
         orientation: Page orientation ('landscape' or 'portrait', default: 'landscape')
     """
+
     labels_per_row: int = 10
     labels_per_column: int = 13
     label_width_mm: float = 29.0  # Default label width
@@ -103,6 +104,7 @@ class Label:
         date: Collection date (optional)
         additional_info: Any additional information (optional)
     """
+
     location_line1: str = ""
     location_line2: str = ""
     code: str = ""
@@ -111,13 +113,15 @@ class Label:
 
     def is_empty(self) -> bool:
         """Check if the label has no content."""
-        return not any([
-            self.location_line1.strip(),
-            self.location_line2.strip(),
-            self.code.strip(),
-            self.date.strip(),
-            self.additional_info.strip()
-        ])
+        return not any(
+            [
+                self.location_line1.strip(),
+                self.location_line2.strip(),
+                self.code.strip(),
+                self.date.strip(),
+                self.additional_info.strip(),
+            ]
+        )
 
     def to_dict(self) -> dict:
         """Convert label to dictionary."""
@@ -227,13 +231,16 @@ class LabelGenerator:
         Returns:
             List of label copies
         """
-        return [Label(
-            location_line1=label.location_line1,
-            location_line2=label.location_line2,
-            code=label.code,
-            date=label.date,
-            additional_info=label.additional_info,
-        ) for _ in range(count)]
+        return [
+            Label(
+                location_line1=label.location_line1,
+                location_line2=label.location_line2,
+                code=label.code,
+                date=label.date,
+                additional_info=label.additional_info,
+            )
+            for _ in range(count)
+        ]
 
     def generate_sequential_labels(
         self,
@@ -243,7 +250,7 @@ class LabelGenerator:
         start_number: int,
         end_number: int,
         date: str = "",
-        additional_info: str = ""
+        additional_info: str = "",
     ) -> List[Label]:
         """Generate a sequence of labels with incrementing codes.
 
@@ -261,11 +268,13 @@ class LabelGenerator:
         """
         labels = []
         for i in range(start_number, end_number + 1):
-            labels.append(Label(
-                location_line1=location_line1,
-                location_line2=location_line2,
-                code=f"{code_prefix}{i}",
-                date=date,
-                additional_info=additional_info,
-            ))
+            labels.append(
+                Label(
+                    location_line1=location_line1,
+                    location_line2=location_line2,
+                    code=f"{code_prefix}{i}",
+                    date=date,
+                    additional_info=additional_info,
+                )
+            )
         return labels

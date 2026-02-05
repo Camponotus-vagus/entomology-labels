@@ -4,18 +4,18 @@ Output generators for various file formats.
 Supports: HTML, PDF, DOCX
 """
 
-from pathlib import Path
-from typing import Union, Optional
 import tempfile
 import webbrowser
+from pathlib import Path
+from typing import Optional, Union
 
-from ..label_generator import LabelGenerator, LabelConfig
+from ..label_generator import LabelConfig, LabelGenerator
 
 
 def generate_html(
     generator: LabelGenerator,
     output_path: Optional[Union[str, Path]] = None,
-    open_in_browser: bool = False
+    open_in_browser: bool = False,
 ) -> str:
     """Generate HTML file with labels.
 
@@ -260,9 +260,7 @@ def _escape_html(text: str) -> str:
 
 
 def generate_pdf(
-    generator: LabelGenerator,
-    output_path: Union[str, Path],
-    open_after: bool = False
+    generator: LabelGenerator, output_path: Union[str, Path], open_after: bool = False
 ) -> Path:
     """Generate PDF file with labels.
 
@@ -277,7 +275,7 @@ def generate_pdf(
         Path to the generated PDF file
     """
     try:
-        from weasyprint import HTML, CSS
+        from weasyprint import CSS, HTML
     except ImportError:
         raise ImportError(
             "weasyprint is required for PDF generation. "
@@ -300,9 +298,7 @@ def generate_pdf(
 
 
 def generate_docx(
-    generator: LabelGenerator,
-    output_path: Union[str, Path],
-    open_after: bool = False
+    generator: LabelGenerator, output_path: Union[str, Path], open_after: bool = False
 ) -> Path:
     """Generate Word document (.docx) with labels.
 
@@ -318,16 +314,15 @@ def generate_docx(
     """
     try:
         from docx import Document
-        from docx.shared import Mm, Pt
+        from docx.enum.section import WD_ORIENT
         from docx.enum.table import WD_TABLE_ALIGNMENT
         from docx.enum.text import WD_ALIGN_PARAGRAPH
-        from docx.enum.section import WD_ORIENT
-        from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        from docx.shared import Mm, Pt
     except ImportError:
         raise ImportError(
-            "python-docx is required for DOCX generation. "
-            "Install with: pip install python-docx"
+            "python-docx is required for DOCX generation. " "Install with: pip install python-docx"
         )
 
     config = generator.config
@@ -357,17 +352,14 @@ def generate_docx(
             doc.add_page_break()
 
         # Create table for the grid
-        table = doc.add_table(
-            rows=config.labels_per_column,
-            cols=config.labels_per_row
-        )
+        table = doc.add_table(rows=config.labels_per_column, cols=config.labels_per_row)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
         # Set table properties for no spacing
         tbl = table._tbl
-        tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement('w:tblPr')
-        tblLayout = OxmlElement('w:tblLayout')
-        tblLayout.set(qn('w:type'), 'fixed')
+        tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
+        tblLayout = OxmlElement("w:tblLayout")
+        tblLayout.set(qn("w:type"), "fixed")
         tblPr.append(tblLayout)
 
         grid = generator.get_labels_grid(page_num)
@@ -440,19 +432,19 @@ def generate_docx(
 def _set_table_borders(table):
     """Set light borders on all table cells."""
     try:
-        from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
     except ImportError:
         return
 
     tbl = table._tbl
-    tblBorders = OxmlElement('w:tblBorders')
+    tblBorders = OxmlElement("w:tblBorders")
 
-    for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
-        border = OxmlElement(f'w:{border_name}')
-        border.set(qn('w:val'), 'single')
-        border.set(qn('w:sz'), '4')  # 0.5pt
-        border.set(qn('w:color'), 'CCCCCC')
+    for border_name in ["top", "left", "bottom", "right", "insideH", "insideV"]:
+        border = OxmlElement(f"w:{border_name}")
+        border.set(qn("w:val"), "single")
+        border.set(qn("w:sz"), "4")  # 0.5pt
+        border.set(qn("w:color"), "CCCCCC")
         tblBorders.append(border)
 
     tbl.tblPr.append(tblBorders)

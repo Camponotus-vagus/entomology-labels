@@ -4,13 +4,14 @@ Command Line Interface for Entomology Labels Generator.
 Provides commands for generating labels from various input formats.
 """
 
-import click
 from pathlib import Path
 from typing import Optional
 
-from .label_generator import LabelGenerator, LabelConfig
+import click
+
 from .input_handlers import load_data
-from .output_generators import generate_html, generate_pdf, generate_docx
+from .label_generator import LabelConfig, LabelGenerator
+from .output_generators import generate_docx, generate_html, generate_pdf
 
 
 @click.group()
@@ -41,9 +42,15 @@ def cli():
 @click.option("--rows", default=10, type=int, help="Labels per row (default: 10)")
 @click.option("--cols", default=13, type=int, help="Labels per column (default: 13)")
 @click.option("--label-width", default=21.0, type=float, help="Label width in mm (default: 21.0)")
-@click.option("--label-height", default=22.85, type=float, help="Label height in mm (default: 22.85)")
-@click.option("--page-width", default=210.0, type=float, help="Page width in mm (default: 210 for A4)")
-@click.option("--page-height", default=297.0, type=float, help="Page height in mm (default: 297 for A4)")
+@click.option(
+    "--label-height", default=22.85, type=float, help="Label height in mm (default: 22.85)"
+)
+@click.option(
+    "--page-width", default=210.0, type=float, help="Page width in mm (default: 210 for A4)"
+)
+@click.option(
+    "--page-height", default=297.0, type=float, help="Page height in mm (default: 297 for A4)"
+)
 @click.option("--font-size", default=6.0, type=float, help="Font size in points (default: 6)")
 @click.option("--font-family", default="Arial", help="Font family (default: Arial)")
 @click.option("--open", "open_after", is_flag=True, help="Open file after generation")
@@ -60,7 +67,7 @@ def generate(
     font_size: float,
     font_family: str,
     open_after: bool,
-    verbose: bool
+    verbose: bool,
 ):
     """Generate labels from an input file.
 
@@ -81,8 +88,7 @@ def generate(
     output_format = output_path.suffix.lower()
     if output_format not in [".html", ".pdf", ".docx"]:
         raise click.ClickException(
-            f"Unsupported output format: {output_format}. "
-            "Use .html, .pdf, or .docx"
+            f"Unsupported output format: {output_format}. " "Use .html, .pdf, or .docx"
         )
 
     if verbose:
@@ -158,7 +164,7 @@ def sequence(
     output: str,
     rows: int,
     cols: int,
-    open_after: bool
+    open_after: bool,
 ):
     """Generate sequential labels with incrementing codes.
 
@@ -176,8 +182,7 @@ def sequence(
 
     if output_format not in [".html", ".pdf", ".docx"]:
         raise click.ClickException(
-            f"Unsupported output format: {output_format}. "
-            "Use .html, .pdf, or .docx"
+            f"Unsupported output format: {output_format}. " "Use .html, .pdf, or .docx"
         )
 
     config = LabelConfig(labels_per_row=rows, labels_per_column=cols)
@@ -215,18 +220,23 @@ def gui():
     """Launch the graphical user interface."""
     try:
         from .gui import main as gui_main
+
         gui_main()
     except ImportError as e:
         raise click.ClickException(
-            f"GUI dependencies not available: {e}\n"
-            "Make sure tkinter is installed."
+            f"GUI dependencies not available: {e}\n" "Make sure tkinter is installed."
         )
 
 
 @cli.command()
 @click.argument("output_file", type=click.Path())
-@click.option("--format", "file_format", type=click.Choice(["json", "yaml", "csv", "excel"]),
-              default="json", help="Template format")
+@click.option(
+    "--format",
+    "file_format",
+    type=click.Choice(["json", "yaml", "csv", "excel"]),
+    default="json",
+    help="Template format",
+)
 def template(output_file: str, file_format: str):
     """Generate a template file for label data.
 
@@ -247,7 +257,7 @@ def template(output_file: str, file_format: str):
             "code": "N1",
             "date": "15.vi.2024",
             "additional_info": "",
-            "count": 1
+            "count": 1,
         },
         {
             "location_line1": "Italia, Trentino Alto Adige,",
@@ -255,7 +265,7 @@ def template(output_file: str, file_format: str):
             "code": "N2",
             "date": "15.vi.2024",
             "additional_info": "",
-            "count": 1
+            "count": 1,
         },
         {
             "location_line1": "Italia, Lombardia,",
@@ -263,13 +273,14 @@ def template(output_file: str, file_format: str):
             "code": "H1",
             "date": "20.vii.2024",
             "additional_info": "leg. Rossi",
-            "count": 3
+            "count": 3,
         },
     ]
 
     try:
         if file_format == "json":
             import json
+
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump({"labels": example_data}, f, indent=2, ensure_ascii=False)
 
@@ -283,6 +294,7 @@ def template(output_file: str, file_format: str):
 
         elif file_format == "csv":
             import csv
+
             with open(output_path, "w", encoding="utf-8", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=example_data[0].keys())
                 writer.writeheader()
@@ -292,7 +304,9 @@ def template(output_file: str, file_format: str):
             try:
                 import pandas as pd
             except ImportError:
-                raise click.ClickException("pandas and openpyxl are required. Install with: pip install pandas openpyxl")
+                raise click.ClickException(
+                    "pandas and openpyxl are required. Install with: pip install pandas openpyxl"
+                )
             df = pd.DataFrame(example_data)
             df.to_excel(output_path, index=False)
 
