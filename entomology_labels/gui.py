@@ -190,8 +190,8 @@ class EntomologyLabelsGUI:
         layout_fields = [
             ("Etichette per riga:", "labels_per_row", "10"),
             ("Etichette per colonna:", "labels_per_column", "13"),
-            ("Larghezza etichetta (mm):", "label_width_mm", "21.0"),
-            ("Altezza etichetta (mm):", "label_height_mm", "22.85"),
+            ("Larghezza etichetta (mm):", "label_width_mm", "29.7"),
+            ("Altezza etichetta (mm):", "label_height_mm", "16.15"),
         ]
 
         self.config_vars = {}
@@ -207,8 +207,8 @@ class EntomologyLabelsGUI:
         page_frame.pack(fill=tk.X, pady=5)
 
         page_fields = [
-            ("Larghezza pagina (mm):", "page_width_mm", "210"),
-            ("Altezza pagina (mm):", "page_height_mm", "297"),
+            ("Larghezza pagina (mm):", "page_width_mm", "297"),
+            ("Altezza pagina (mm):", "page_height_mm", "210"),
             ("Margine superiore (mm):", "margin_top_mm", "0"),
             ("Margine inferiore (mm):", "margin_bottom_mm", "0"),
             ("Margine sinistro (mm):", "margin_left_mm", "0"),
@@ -251,11 +251,11 @@ class EntomologyLabelsGUI:
         preset_frame = ttk.LabelFrame(config_frame, text="Preimpostazioni", padding="10")
         preset_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Button(preset_frame, text="A4 Standard (10x13)",
+        ttk.Button(preset_frame, text="A4 Orizzontale (10x13)",
                    command=lambda: self._apply_preset("a4_standard")).pack(side=tk.LEFT, padx=2)
         ttk.Button(preset_frame, text="A4 Compatto (12x15)",
                    command=lambda: self._apply_preset("a4_compact")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(preset_frame, text="Letter US (10x12)",
+        ttk.Button(preset_frame, text="Letter US Orizzontale (10x12)",
                    command=lambda: self._apply_preset("letter_us")).pack(side=tk.LEFT, padx=2)
 
     def _setup_preview_tab(self):
@@ -448,26 +448,26 @@ class EntomologyLabelsGUI:
             "a4_standard": {
                 "labels_per_row": "10",
                 "labels_per_column": "13",
-                "label_width_mm": "21.0",
-                "label_height_mm": "22.85",
-                "page_width_mm": "210",
-                "page_height_mm": "297",
+                "label_width_mm": "29.7",
+                "label_height_mm": "16.15",
+                "page_width_mm": "297",
+                "page_height_mm": "210",
             },
             "a4_compact": {
                 "labels_per_row": "12",
                 "labels_per_column": "15",
-                "label_width_mm": "17.5",
-                "label_height_mm": "19.8",
-                "page_width_mm": "210",
-                "page_height_mm": "297",
+                "label_width_mm": "24.75",
+                "label_height_mm": "14.0",
+                "page_width_mm": "297",
+                "page_height_mm": "210",
             },
             "letter_us": {
                 "labels_per_row": "10",
                 "labels_per_column": "12",
-                "label_width_mm": "21.59",
-                "label_height_mm": "23.28",
-                "page_width_mm": "215.9",
-                "page_height_mm": "279.4",
+                "label_width_mm": "27.94",
+                "label_height_mm": "18.03",
+                "page_width_mm": "279.4",
+                "page_height_mm": "215.9",
             },
         }
 
