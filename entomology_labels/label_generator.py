@@ -19,8 +19,8 @@ class LabelConfig:
     Attributes:
         labels_per_row: Number of labels horizontally per page (default: 10)
         labels_per_column: Number of labels vertically per page (default: 13)
-        label_width_mm: Width of each label in millimeters (default: 29.7 for landscape)
-        label_height_mm: Height of each label in millimeters (default: 16.15 for landscape)
+        label_width_mm: Width of each label in millimeters (default: 29.0)
+        label_height_mm: Height of each label in millimeters (default: 13.0)
         page_width_mm: Page width in millimeters (default: 297 for A4 landscape)
         page_height_mm: Page height in millimeters (default: 210 for A4 landscape)
         margin_top_mm: Top margin in millimeters (default: 0)
@@ -34,8 +34,8 @@ class LabelConfig:
     """
     labels_per_row: int = 10
     labels_per_column: int = 13
-    label_width_mm: float = 29.7  # 297mm / 10 (A4 landscape)
-    label_height_mm: float = 16.15  # ~210mm / 13 (A4 landscape)
+    label_width_mm: float = 29.0  # Default label width
+    label_height_mm: float = 13.0  # Default label height
     page_width_mm: float = 297.0  # A4 landscape width
     page_height_mm: float = 210.0  # A4 landscape height
     margin_top_mm: float = 0.0

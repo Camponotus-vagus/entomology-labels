@@ -76,6 +76,8 @@ class TestLabelConfig:
         assert config.labels_per_page == 130
         assert config.page_width_mm == 297.0  # A4 landscape width
         assert config.page_height_mm == 210.0  # A4 landscape height
+        assert config.label_width_mm == 29.0  # Default label width
+        assert config.label_height_mm == 13.0  # Default label height
         assert config.orientation == "landscape"
         assert config.is_landscape is True
 

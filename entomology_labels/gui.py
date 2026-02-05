@@ -190,8 +190,8 @@ class EntomologyLabelsGUI:
         layout_fields = [
             ("Etichette per riga:", "labels_per_row", "10"),
             ("Etichette per colonna:", "labels_per_column", "13"),
-            ("Larghezza etichetta (mm):", "label_width_mm", "29.7"),
-            ("Altezza etichetta (mm):", "label_height_mm", "16.15"),
+            ("Larghezza etichetta (mm):", "label_width_mm", "29.0"),
+            ("Altezza etichetta (mm):", "label_height_mm", "13.0"),
         ]
 
         self.config_vars = {}
@@ -448,24 +448,24 @@ class EntomologyLabelsGUI:
             "a4_standard": {
                 "labels_per_row": "10",
                 "labels_per_column": "13",
-                "label_width_mm": "29.7",
-                "label_height_mm": "16.15",
+                "label_width_mm": "29.0",
+                "label_height_mm": "13.0",
                 "page_width_mm": "297",
                 "page_height_mm": "210",
             },
             "a4_compact": {
                 "labels_per_row": "12",
-                "labels_per_column": "15",
-                "label_width_mm": "24.75",
-                "label_height_mm": "14.0",
+                "labels_per_column": "16",
+                "label_width_mm": "24.0",
+                "label_height_mm": "13.0",
                 "page_width_mm": "297",
                 "page_height_mm": "210",
             },
             "letter_us": {
                 "labels_per_row": "10",
-                "labels_per_column": "12",
-                "label_width_mm": "27.94",
-                "label_height_mm": "18.03",
+                "labels_per_column": "13",
+                "label_width_mm": "27.0",
+                "label_height_mm": "13.0",
                 "page_width_mm": "279.4",
                 "page_height_mm": "215.9",
             },
