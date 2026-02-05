@@ -1,0 +1,75 @@
+{
+  "labels": [
+    {
+      "location_line1": "Italia, Trentino Alto Adige,",
+      "location_line2": "Giustino (TN), Vedretta d'Amola",
+      "code": "N1",
+      "date": "15.vi.2024",
+      "count": 5
+    },
+    {
+      "location_line1": "Italia, Trentino Alto Adige,",
+      "location_line2": "Giustino (TN), Vedretta d'Amola",
+      "code": "N2",
+      "date": "15.vi.2024",
+      "count": 3
+    },
+    {
+      "location_line1": "Italia, Trentino Alto Adige,",
+      "location_line2": "Giustino (TN), Vedretta d'Amola",
+      "code": "N3",
+      "date": "16.vi.2024",
+      "count": 4
+    },
+    {
+      "location_line1": "Italia, Trentino Alto Adige,",
+      "location_line2": "Giustino (TN), Vedretta d'Amola",
+      "code": "H1",
+      "date": "17.vi.2024",
+      "count": 2
+    },
+    {
+      "location_line1": "Italia, Trentino Alto Adige,",
+      "location_line2": "Giustino (TN), Vedretta d'Amola",
+      "code": "H2",
+      "date": "17.vi.2024",
+      "count": 3
+    },
+    {
+      "location_line1": "Italia, Lombardia,",
+      "location_line2": "Sondrio, Valmalenco",
+      "code": "O1",
+      "date": "20.vii.2024",
+      "additional_info": "leg. Rossi",
+      "count": 2
+    },
+    {
+      "location_line1": "Italia, Lombardia,",
+      "location_line2": "Sondrio, Valmalenco",
+      "code": "O2",
+      "date": "20.vii.2024",
+      "count": 3
+    },
+    {
+      "location_line1": "Italia, Piemonte,",
+      "location_line2": "Cuneo, Valle Pesio",
+      "code": "G1",
+      "date": "25.vii.2024",
+      "count": 4
+    },
+    {
+      "location_line1": "Italia, Piemonte,",
+      "location_line2": "Cuneo, Valle Pesio",
+      "code": "G2",
+      "date": "25.vii.2024",
+      "count": 2
+    },
+    {
+      "location_line1": "Italia, Veneto,",
+      "location_line2": "Belluno, Dolomiti",
+      "code": "I1",
+      "date": "01.viii.2024",
+      "count": 5
+    }
+  ]
+}

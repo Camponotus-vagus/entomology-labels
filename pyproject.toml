@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "entomology-labels"
+version = "1.0.0"
+description = "Generate professional entomology specimen labels with support for multiple input/output formats"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Entomology Labels Generator Contributors"}
+]
+keywords = [
+    "entomology",
+    "labels",
+    "specimens",
+    "biology",
+    "taxonomy",
+    "museum",
+    "collection",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+excel = [
+    "pandas>=1.5",
+    "openpyxl>=3.0",
+]
+docx = [
+    "python-docx>=0.8",
+]
+pdf = [
+    "weasyprint>=57.0",
+]
+yaml = [
+    "pyyaml>=6.0",
+]
+all = [
+    "pandas>=1.5",
+    "openpyxl>=3.0",
+    "python-docx>=0.8",
+    "weasyprint>=57.0",
+    "pyyaml>=6.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "isort>=5.0",
+    "flake8>=6.0",
+]
+
+[project.scripts]
+entomology-labels = "entomology_labels.cli:main"
+entomology-labels-gui = "entomology_labels.gui:main"
+
+[project.urls]
+Homepage = "https://github.com/Camponotus-vagus/entomology-labels"
+Documentation = "https://github.com/Camponotus-vagus/entomology-labels#readme"
+Repository = "https://github.com/Camponotus-vagus/entomology-labels"
+Issues = "https://github.com/Camponotus-vagus/entomology-labels/issues"
+
+[tool.setuptools.packages.find]
+include = ["entomology_labels*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

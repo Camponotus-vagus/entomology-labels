@@ -1,0 +1,15 @@
+# Core dependencies
+click>=8.0
+
+# Excel support (optional)
+pandas>=1.5
+openpyxl>=3.0
+
+# Word document support (optional)
+python-docx>=0.8
+
+# PDF generation (optional - requires system dependencies)
+# weasyprint>=57.0
+
+# YAML support (optional)
+pyyaml>=6.0
