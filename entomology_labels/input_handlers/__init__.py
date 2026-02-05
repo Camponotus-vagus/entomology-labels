@@ -4,9 +4,9 @@ Input handlers for various file formats.
 Supports: Excel (.xlsx, .xls), CSV, TXT, DOCX, JSON, YAML
 """
 
+import json
 from pathlib import Path
 from typing import List, Union
-import json
 
 from ..label_generator import Label
 
@@ -49,8 +49,7 @@ def load_data(file_path: Union[str, Path]) -> List[Label]:
     if handler is None:
         supported = ", ".join(handlers.keys())
         raise ValueError(
-            f"Unsupported file format: {extension}. "
-            f"Supported formats: {supported}"
+            f"Unsupported file format: {extension}. " f"Supported formats: {supported}"
         )
 
     return handler(path)
@@ -88,10 +87,7 @@ def load_csv(file_path: Path) -> List[Label]:
     try:
         import pandas as pd
     except ImportError:
-        raise ImportError(
-            "pandas is required for CSV support. "
-            "Install with: pip install pandas"
-        )
+        raise ImportError("pandas is required for CSV support. " "Install with: pip install pandas")
 
     # Try comma first, then semicolon
     try:
@@ -131,6 +127,7 @@ def load_txt(file_path: Path) -> List[Label]:
         # TSV format
         try:
             import pandas as pd
+
             df = pd.read_csv(file_path, delimiter="\t")
             return _dataframe_to_labels(df)
         except Exception:
@@ -161,22 +158,33 @@ def _parse_key_value_txt(content: str) -> List[Label]:
 
         if data:
             label = Label(
-                location_line1=data.get("location1", data.get("location_line1", data.get("località1", ""))),
-                location_line2=data.get("location2", data.get("location_line2", data.get("località2", ""))),
+                location_line1=data.get(
+                    "location1", data.get("location_line1", data.get("località1", ""))
+                ),
+                location_line2=data.get(
+                    "location2", data.get("location_line2", data.get("località2", ""))
+                ),
                 code=data.get("code", data.get("codice", data.get("specimen_code", ""))),
                 date=data.get("date", data.get("data", data.get("collection_date", ""))),
-                additional_info=data.get("additional_info", data.get("notes", data.get("note", ""))),
+                additional_info=data.get(
+                    "additional_info", data.get("notes", data.get("note", ""))
+                ),
             )
 
             # Handle count/quantity for duplicates
             count = int(data.get("count", data.get("quantity", data.get("quantità", 1))))
-            labels.extend([Label(
-                location_line1=label.location_line1,
-                location_line2=label.location_line2,
-                code=label.code,
-                date=label.date,
-                additional_info=label.additional_info,
-            ) for _ in range(count)])
+            labels.extend(
+                [
+                    Label(
+                        location_line1=label.location_line1,
+                        location_line2=label.location_line2,
+                        code=label.code,
+                        date=label.date,
+                        additional_info=label.additional_info,
+                    )
+                    for _ in range(count)
+                ]
+            )
 
     return labels
 
@@ -228,8 +236,7 @@ def load_docx(file_path: Path) -> List[Label]:
         from docx import Document
     except ImportError:
         raise ImportError(
-            "python-docx is required for DOCX support. "
-            "Install with: pip install python-docx"
+            "python-docx is required for DOCX support. " "Install with: pip install python-docx"
         )
 
     doc = Document(file_path)
@@ -240,7 +247,11 @@ def load_docx(file_path: Path) -> List[Label]:
         headers = [cell.text.strip().lower() for cell in table.rows[0].cells]
 
         for row in table.rows[1:]:
-            data = {headers[i]: cell.text.strip() for i, cell in enumerate(row.cells) if i < len(headers)}
+            data = {
+                headers[i]: cell.text.strip()
+                for i, cell in enumerate(row.cells)
+                if i < len(headers)
+            }
             label = Label.from_dict(data)
             if not label.is_empty():
                 labels.append(label)
@@ -303,13 +314,18 @@ def load_json(file_path: Path) -> List[Label]:
     for item in items:
         label = Label.from_dict(item)
         count = int(item.get("count", item.get("quantity", 1)))
-        labels.extend([Label(
-            location_line1=label.location_line1,
-            location_line2=label.location_line2,
-            code=label.code,
-            date=label.date,
-            additional_info=label.additional_info,
-        ) for _ in range(count)])
+        labels.extend(
+            [
+                Label(
+                    location_line1=label.location_line1,
+                    location_line2=label.location_line2,
+                    code=label.code,
+                    date=label.date,
+                    additional_info=label.additional_info,
+                )
+                for _ in range(count)
+            ]
+        )
 
     return labels
 
@@ -323,8 +339,7 @@ def load_yaml(file_path: Path) -> List[Label]:
         import yaml
     except ImportError:
         raise ImportError(
-            "PyYAML is required for YAML support. "
-            "Install with: pip install pyyaml"
+            "PyYAML is required for YAML support. " "Install with: pip install pyyaml"
         )
 
     content = file_path.read_text(encoding="utf-8")
@@ -339,13 +354,18 @@ def load_yaml(file_path: Path) -> List[Label]:
     for item in items:
         label = Label.from_dict(item)
         count = int(item.get("count", item.get("quantity", 1)))
-        labels.extend([Label(
-            location_line1=label.location_line1,
-            location_line2=label.location_line2,
-            code=label.code,
-            date=label.date,
-            additional_info=label.additional_info,
-        ) for _ in range(count)])
+        labels.extend(
+            [
+                Label(
+                    location_line1=label.location_line1,
+                    location_line2=label.location_line2,
+                    code=label.code,
+                    date=label.date,
+                    additional_info=label.additional_info,
+                )
+                for _ in range(count)
+            ]
+        )
 
     return labels
 
@@ -399,12 +419,17 @@ def _dataframe_to_labels(df) -> List[Label]:
                 except (ValueError, TypeError):
                     count = 1
 
-            labels.extend([Label(
-                location_line1=label.location_line1,
-                location_line2=label.location_line2,
-                code=label.code,
-                date=label.date,
-                additional_info=label.additional_info,
-            ) for _ in range(count)])
+            labels.extend(
+                [
+                    Label(
+                        location_line1=label.location_line1,
+                        location_line2=label.location_line2,
+                        code=label.code,
+                        date=label.date,
+                        additional_info=label.additional_info,
+                    )
+                    for _ in range(count)
+                ]
+            )
 
     return labels

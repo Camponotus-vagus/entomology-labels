@@ -4,17 +4,17 @@ Graphical User Interface for Entomology Labels Generator.
 Provides an easy-to-use interface for creating and exporting entomology labels.
 """
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext
-from pathlib import Path
-from typing import Optional
-import webbrowser
-import tempfile
 import json
+import tempfile
+import tkinter as tk
+import webbrowser
+from pathlib import Path
+from tkinter import filedialog, messagebox, scrolledtext, ttk
+from typing import Optional
 
-from .label_generator import LabelGenerator, Label, LabelConfig
 from .input_handlers import load_data
-from .output_generators import generate_html, generate_pdf, generate_docx
+from .label_generator import Label, LabelConfig, LabelGenerator
+from .output_generators import generate_docx, generate_html, generate_pdf
 
 
 class EntomologyLabelsGUI:
@@ -54,7 +54,9 @@ class EntomologyLabelsGUI:
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Importa dati...", command=self._import_data, accelerator="Ctrl+O")
+        file_menu.add_command(
+            label="Importa dati...", command=self._import_data, accelerator="Ctrl+O"
+        )
         file_menu.add_separator()
         file_menu.add_command(label="Esporta HTML...", command=lambda: self._export("html"))
         file_menu.add_command(label="Esporta PDF...", command=lambda: self._export("pdf"))
@@ -66,7 +68,9 @@ class EntomologyLabelsGUI:
         edit_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Modifica", menu=edit_menu)
         edit_menu.add_command(label="Cancella tutte le etichette", command=self._clear_labels)
-        edit_menu.add_command(label="Genera etichette sequenziali...", command=self._show_sequential_dialog)
+        edit_menu.add_command(
+            label="Genera etichette sequenziali...", command=self._show_sequential_dialog
+        )
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -132,17 +136,23 @@ class EntomologyLabelsGUI:
         btn_frame.grid(row=len(fields), column=0, columnspan=2, pady=10)
 
         ttk.Button(btn_frame, text="Aggiungi", command=self._add_label).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btn_frame, text="Pulisci campi", command=self._clear_form).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_frame, text="Pulisci campi", command=self._clear_form).pack(
+            side=tk.LEFT, padx=2
+        )
 
         # Import button
         import_frame = ttk.LabelFrame(left_frame, text="Importa da file", padding="10")
-        import_frame.grid(row=len(fields)+1, column=0, columnspan=2, sticky=tk.EW, pady=10)
+        import_frame.grid(row=len(fields) + 1, column=0, columnspan=2, sticky=tk.EW, pady=10)
 
-        ttk.Button(import_frame, text="Importa (Excel, CSV, TXT, DOCX, JSON)...",
-                   command=self._import_data).pack(fill=tk.X)
+        ttk.Button(
+            import_frame, text="Importa (Excel, CSV, TXT, DOCX, JSON)...", command=self._import_data
+        ).pack(fill=tk.X)
 
-        ttk.Label(import_frame, text="Formati supportati: .xlsx, .xls, .csv, .txt, .docx, .json, .yaml",
-                  foreground="gray").pack(pady=(5, 0))
+        ttk.Label(
+            import_frame,
+            text="Formati supportati: .xlsx, .xls, .csv, .txt, .docx, .json, .yaml",
+            foreground="gray",
+        ).pack(pady=(5, 0))
 
         # Right panel - Labels list
         right_frame = ttk.LabelFrame(data_frame, text="Etichette Caricate", padding="10")
@@ -173,10 +183,12 @@ class EntomologyLabelsGUI:
         tree_btn_frame = ttk.Frame(right_frame)
         tree_btn_frame.pack(fill=tk.X, pady=(5, 0))
 
-        ttk.Button(tree_btn_frame, text="Rimuovi selezionata",
-                   command=self._remove_selected_label).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tree_btn_frame, text="Rimuovi tutte",
-                   command=self._clear_labels).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            tree_btn_frame, text="Rimuovi selezionata", command=self._remove_selected_label
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tree_btn_frame, text="Rimuovi tutte", command=self._clear_labels).pack(
+            side=tk.LEFT, padx=2
+        )
 
     def _setup_config_tab(self):
         """Setup the configuration tab."""
@@ -228,35 +240,50 @@ class EntomologyLabelsGUI:
 
         ttk.Label(font_frame, text="Font:").grid(row=0, column=0, sticky=tk.W, pady=2)
         self.config_vars["font_family"] = tk.StringVar(value="Arial")
-        font_combo = ttk.Combobox(font_frame, textvariable=self.config_vars["font_family"],
-                                   values=["Arial", "Times New Roman", "Helvetica", "Calibri", "Courier New"],
-                                   width=20)
+        font_combo = ttk.Combobox(
+            font_frame,
+            textvariable=self.config_vars["font_family"],
+            values=["Arial", "Times New Roman", "Helvetica", "Calibri", "Courier New"],
+            width=20,
+        )
         font_combo.grid(row=0, column=1, sticky=tk.W, pady=2, padx=(5, 0))
 
         ttk.Label(font_frame, text="Dimensione (pt):").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.config_vars["font_size_pt"] = tk.StringVar(value="6")
         ttk.Entry(font_frame, textvariable=self.config_vars["font_size_pt"], width=15).grid(
-            row=1, column=1, sticky=tk.W, pady=2, padx=(5, 0))
+            row=1, column=1, sticky=tk.W, pady=2, padx=(5, 0)
+        )
 
         ttk.Label(font_frame, text="Interlinea:").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.config_vars["line_spacing"] = tk.StringVar(value="1.0")
         ttk.Entry(font_frame, textvariable=self.config_vars["line_spacing"], width=15).grid(
-            row=2, column=1, sticky=tk.W, pady=2, padx=(5, 0))
+            row=2, column=1, sticky=tk.W, pady=2, padx=(5, 0)
+        )
 
         # Apply button
-        ttk.Button(config_frame, text="Applica configurazione",
-                   command=self._apply_config).pack(pady=10)
+        ttk.Button(config_frame, text="Applica configurazione", command=self._apply_config).pack(
+            pady=10
+        )
 
         # Presets
         preset_frame = ttk.LabelFrame(config_frame, text="Preimpostazioni", padding="10")
         preset_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Button(preset_frame, text="A4 Orizzontale (10x13)",
-                   command=lambda: self._apply_preset("a4_standard")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(preset_frame, text="A4 Compatto (12x15)",
-                   command=lambda: self._apply_preset("a4_compact")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(preset_frame, text="Letter US Orizzontale (10x12)",
-                   command=lambda: self._apply_preset("letter_us")).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            preset_frame,
+            text="A4 Orizzontale (10x13)",
+            command=lambda: self._apply_preset("a4_standard"),
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            preset_frame,
+            text="A4 Compatto (12x15)",
+            command=lambda: self._apply_preset("a4_compact"),
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            preset_frame,
+            text="Letter US Orizzontale (10x12)",
+            command=lambda: self._apply_preset("letter_us"),
+        ).pack(side=tk.LEFT, padx=2)
 
     def _setup_preview_tab(self):
         """Setup the preview tab."""
@@ -267,19 +294,24 @@ class EntomologyLabelsGUI:
         controls_frame = ttk.Frame(preview_frame)
         controls_frame.pack(fill=tk.X, pady=(0, 10))
 
-        ttk.Button(controls_frame, text="Aggiorna anteprima",
-                   command=self._update_preview).pack(side=tk.LEFT, padx=2)
-        ttk.Button(controls_frame, text="Apri in browser",
-                   command=self._open_in_browser).pack(side=tk.LEFT, padx=2)
+        ttk.Button(controls_frame, text="Aggiorna anteprima", command=self._update_preview).pack(
+            side=tk.LEFT, padx=2
+        )
+        ttk.Button(controls_frame, text="Apri in browser", command=self._open_in_browser).pack(
+            side=tk.LEFT, padx=2
+        )
 
         ttk.Separator(controls_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
-        ttk.Button(controls_frame, text="Esporta HTML",
-                   command=lambda: self._export("html")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(controls_frame, text="Esporta PDF",
-                   command=lambda: self._export("pdf")).pack(side=tk.LEFT, padx=2)
-        ttk.Button(controls_frame, text="Esporta DOCX",
-                   command=lambda: self._export("docx")).pack(side=tk.LEFT, padx=2)
+        ttk.Button(controls_frame, text="Esporta HTML", command=lambda: self._export("html")).pack(
+            side=tk.LEFT, padx=2
+        )
+        ttk.Button(controls_frame, text="Esporta PDF", command=lambda: self._export("pdf")).pack(
+            side=tk.LEFT, padx=2
+        )
+        ttk.Button(controls_frame, text="Esporta DOCX", command=lambda: self._export("docx")).pack(
+            side=tk.LEFT, padx=2
+        )
 
         # Preview info
         self.preview_info = ttk.Label(preview_frame, text="")
@@ -328,13 +360,15 @@ class EntomologyLabelsGUI:
             return
 
         for _ in range(quantity):
-            self.generator.add_label(Label(
-                location_line1=label.location_line1,
-                location_line2=label.location_line2,
-                code=label.code,
-                date=label.date,
-                additional_info=label.additional_info,
-            ))
+            self.generator.add_label(
+                Label(
+                    location_line1=label.location_line1,
+                    location_line2=label.location_line2,
+                    code=label.code,
+                    date=label.date,
+                    additional_info=label.additional_info,
+                )
+            )
 
         self._update_labels_tree()
         self._clear_form()
@@ -361,8 +395,7 @@ class EntomologyLabelsGUI:
         ]
 
         file_path = filedialog.askopenfilename(
-            title="Seleziona file da importare",
-            filetypes=filetypes
+            title="Seleziona file da importare", filetypes=filetypes
         )
 
         if not file_path:
@@ -384,12 +417,25 @@ class EntomologyLabelsGUI:
 
         # Add all labels
         for i, label in enumerate(self.generator.labels):
-            self.labels_tree.insert("", tk.END, iid=str(i), values=(
-                label.location_line1[:30] + "..." if len(label.location_line1) > 30 else label.location_line1,
-                label.location_line2[:30] + "..." if len(label.location_line2) > 30 else label.location_line2,
-                label.code,
-                label.date,
-            ))
+            self.labels_tree.insert(
+                "",
+                tk.END,
+                iid=str(i),
+                values=(
+                    (
+                        label.location_line1[:30] + "..."
+                        if len(label.location_line1) > 30
+                        else label.location_line1
+                    ),
+                    (
+                        label.location_line2[:30] + "..."
+                        if len(label.location_line2) > 30
+                        else label.location_line2
+                    ),
+                    label.code,
+                    label.date,
+                ),
+            )
 
         # Update count
         self.labels_count_label.config(
@@ -481,7 +527,10 @@ class EntomologyLabelsGUI:
         """Update the HTML preview."""
         if not self.generator.labels:
             self.preview_text.delete("1.0", tk.END)
-            self.preview_text.insert("1.0", "Nessuna etichetta da visualizzare.\n\nAggiungi etichette dalla scheda 'Dati Etichette'.")
+            self.preview_text.insert(
+                "1.0",
+                "Nessuna etichetta da visualizzare.\n\nAggiungi etichette dalla scheda 'Dati Etichette'.",
+            )
             self.preview_info.config(text="")
             return
 
@@ -499,7 +548,9 @@ class EntomologyLabelsGUI:
             messagebox.showinfo("Info", "Nessuna etichetta da visualizzare.")
             return
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".html", delete=False, encoding="utf-8"
+        ) as f:
             html = generate_html(self.generator)
             f.write(html)
             webbrowser.open(f"file://{f.name}")
@@ -525,7 +576,7 @@ class EntomologyLabelsGUI:
         file_path = filedialog.asksaveasfilename(
             title=f"Salva come {format_type.upper()}",
             filetypes=filetypes[format_type],
-            defaultextension=default_ext[format_type]
+            defaultextension=default_ext[format_type],
         )
 
         if not file_path:
@@ -541,8 +592,9 @@ class EntomologyLabelsGUI:
 
             self._update_status(f"Esportato in {Path(file_path).name}")
 
-            if messagebox.askyesno("Esportazione completata",
-                                    f"File salvato in:\n{file_path}\n\nVuoi aprirlo?"):
+            if messagebox.askyesno(
+                "Esportazione completata", f"File salvato in:\n{file_path}\n\nVuoi aprirlo?"
+            ):
                 webbrowser.open(f"file://{file_path}")
 
         except ImportError as e:
@@ -575,7 +627,9 @@ class EntomologyLabelsGUI:
             ttk.Label(frame, text=label).grid(row=i, column=0, sticky=tk.W, pady=5)
             var = tk.StringVar(value=default)
             vars[var_name] = var
-            ttk.Entry(frame, textvariable=var, width=30).grid(row=i, column=1, sticky=tk.EW, pady=5, padx=(5, 0))
+            ttk.Entry(frame, textvariable=var, width=30).grid(
+                row=i, column=1, sticky=tk.EW, pady=5, padx=(5, 0)
+            )
 
         frame.columnconfigure(1, weight=1)
 

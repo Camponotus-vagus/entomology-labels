@@ -1,6 +1,7 @@
 """Tests for the label generator module."""
 
 import pytest
+
 from entomology_labels.label_generator import Label, LabelConfig, LabelGenerator
 
 
@@ -13,7 +14,7 @@ class TestLabel:
             location_line1="Italia, Trentino Alto Adige,",
             location_line2="Giustino (TN), Vedretta d'Amola",
             code="N1",
-            date="15.vi.2024"
+            date="15.vi.2024",
         )
         assert label.location_line1 == "Italia, Trentino Alto Adige,"
         assert label.location_line2 == "Giustino (TN), Vedretta d'Amola"
@@ -30,12 +31,7 @@ class TestLabel:
 
     def test_label_to_dict(self):
         """Test converting label to dictionary."""
-        label = Label(
-            location_line1="Italia",
-            location_line2="Milano",
-            code="X1",
-            date="01.i.2024"
-        )
+        label = Label(location_line1="Italia", location_line2="Milano", code="X1", date="01.i.2024")
         d = label.to_dict()
         assert d["location_line1"] == "Italia"
         assert d["code"] == "X1"
@@ -46,7 +42,7 @@ class TestLabel:
             "location_line1": "Italia",
             "location_line2": "Roma",
             "code": "R1",
-            "date": "10.iii.2024"
+            "date": "10.iii.2024",
         }
         label = Label.from_dict(data)
         assert label.location_line1 == "Italia"
@@ -58,7 +54,7 @@ class TestLabel:
             "location1": "Francia",
             "location2": "Parigi",
             "specimen_code": "P1",
-            "collection_date": "05.v.2024"
+            "collection_date": "05.v.2024",
         }
         label = Label.from_dict(data)
         assert label.location_line1 == "Francia"
@@ -90,11 +86,7 @@ class TestLabelConfig:
 
     def test_portrait_orientation(self):
         """Test portrait orientation configuration."""
-        config = LabelConfig(
-            orientation="portrait",
-            page_width_mm=210.0,
-            page_height_mm=297.0
-        )
+        config = LabelConfig(orientation="portrait", page_width_mm=210.0, page_height_mm=297.0)
         assert config.is_landscape is False
         assert config.page_width_mm == 210.0
         assert config.page_height_mm == 297.0
@@ -191,7 +183,7 @@ class TestLabelGenerator:
             code_prefix="M",
             start_number=1,
             end_number=5,
-            date="01.i.2024"
+            date="01.i.2024",
         )
         assert len(labels) == 5
         assert labels[0].code == "M1"
