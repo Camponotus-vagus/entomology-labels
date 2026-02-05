@@ -13,16 +13,16 @@ import math
 class LabelConfig:
     """Configuration for label dimensions and layout.
 
-    Default values are optimized for standard A4 paper (210mm x 297mm)
-    with 10 labels per row and 13 labels per column.
+    Default values are optimized for standard A4 paper in LANDSCAPE orientation
+    (297mm x 210mm) with 10 labels per row and 13 labels per column.
 
     Attributes:
         labels_per_row: Number of labels horizontally per page (default: 10)
         labels_per_column: Number of labels vertically per page (default: 13)
-        label_width_mm: Width of each label in millimeters (default: 21.0)
-        label_height_mm: Height of each label in millimeters (default: 22.85)
-        page_width_mm: Page width in millimeters (default: 210 for A4)
-        page_height_mm: Page height in millimeters (default: 297 for A4)
+        label_width_mm: Width of each label in millimeters (default: 29.7 for landscape)
+        label_height_mm: Height of each label in millimeters (default: 16.15 for landscape)
+        page_width_mm: Page width in millimeters (default: 297 for A4 landscape)
+        page_height_mm: Page height in millimeters (default: 210 for A4 landscape)
         margin_top_mm: Top margin in millimeters (default: 0)
         margin_bottom_mm: Bottom margin in millimeters (default: 0)
         margin_left_mm: Left margin in millimeters (default: 0)
@@ -30,13 +30,14 @@ class LabelConfig:
         font_size_pt: Font size in points (default: 6)
         font_family: Font family name (default: Arial)
         line_spacing: Line spacing multiplier (default: 1.0)
+        orientation: Page orientation ('landscape' or 'portrait', default: 'landscape')
     """
     labels_per_row: int = 10
     labels_per_column: int = 13
-    label_width_mm: float = 21.0  # 210mm / 10
-    label_height_mm: float = 22.85  # ~297mm / 13
-    page_width_mm: float = 210.0  # A4 width
-    page_height_mm: float = 297.0  # A4 height
+    label_width_mm: float = 29.7  # 297mm / 10 (A4 landscape)
+    label_height_mm: float = 16.15  # ~210mm / 13 (A4 landscape)
+    page_width_mm: float = 297.0  # A4 landscape width
+    page_height_mm: float = 210.0  # A4 landscape height
     margin_top_mm: float = 0.0
     margin_bottom_mm: float = 0.0
     margin_left_mm: float = 0.0
@@ -44,6 +45,12 @@ class LabelConfig:
     font_size_pt: float = 6.0
     font_family: str = "Arial"
     line_spacing: float = 1.0
+    orientation: str = "landscape"  # 'landscape' or 'portrait'
+
+    @property
+    def is_landscape(self) -> bool:
+        """Check if orientation is landscape."""
+        return self.orientation.lower() == "landscape"
 
     @property
     def labels_per_page(self) -> int:
@@ -76,6 +83,7 @@ class LabelConfig:
             "font_size_pt": self.font_size_pt,
             "font_family": self.font_family,
             "line_spacing": self.line_spacing,
+            "orientation": self.orientation,
         }
 
     @classmethod

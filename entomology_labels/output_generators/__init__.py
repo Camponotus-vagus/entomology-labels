@@ -321,6 +321,7 @@ def generate_docx(
         from docx.shared import Mm, Pt
         from docx.enum.table import WD_TABLE_ALIGNMENT
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.section import WD_ORIENT
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
     except ImportError:
@@ -334,10 +335,17 @@ def generate_docx(
 
     doc = Document()
 
-    # Set page size and margins
+    # Set page size, orientation and margins
     section = doc.sections[0]
     section.page_width = Mm(config.page_width_mm)
     section.page_height = Mm(config.page_height_mm)
+
+    # Set orientation based on config
+    if config.is_landscape:
+        section.orientation = WD_ORIENT.LANDSCAPE
+    else:
+        section.orientation = WD_ORIENT.PORTRAIT
+
     section.top_margin = Mm(config.margin_top_mm)
     section.bottom_margin = Mm(config.margin_bottom_mm)
     section.left_margin = Mm(config.margin_left_mm)

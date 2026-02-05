@@ -69,11 +69,15 @@ class TestLabelConfig:
     """Tests for the LabelConfig class."""
 
     def test_default_config(self):
-        """Test default configuration values."""
+        """Test default configuration values (A4 Landscape)."""
         config = LabelConfig()
         assert config.labels_per_row == 10
         assert config.labels_per_column == 13
         assert config.labels_per_page == 130
+        assert config.page_width_mm == 297.0  # A4 landscape width
+        assert config.page_height_mm == 210.0  # A4 landscape height
+        assert config.orientation == "landscape"
+        assert config.is_landscape is True
 
     def test_custom_config(self):
         """Test custom configuration."""
@@ -81,6 +85,17 @@ class TestLabelConfig:
         assert config.labels_per_row == 12
         assert config.labels_per_column == 15
         assert config.labels_per_page == 180
+
+    def test_portrait_orientation(self):
+        """Test portrait orientation configuration."""
+        config = LabelConfig(
+            orientation="portrait",
+            page_width_mm=210.0,
+            page_height_mm=297.0
+        )
+        assert config.is_landscape is False
+        assert config.page_width_mm == 210.0
+        assert config.page_height_mm == 297.0
 
     def test_config_to_dict(self):
         """Test converting config to dictionary."""
