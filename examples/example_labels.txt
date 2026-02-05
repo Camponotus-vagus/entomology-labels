@@ -1,0 +1,30 @@
+location1: Italia, Trentino Alto Adige,
+location2: Giustino (TN), Vedretta d'Amola
+code: N1
+date: 15.vi.2024
+count: 5
+
+location1: Italia, Trentino Alto Adige,
+location2: Giustino (TN), Vedretta d'Amola
+code: N2
+date: 15.vi.2024
+count: 3
+
+location1: Italia, Trentino Alto Adige,
+location2: Giustino (TN), Vedretta d'Amola
+code: N3
+date: 16.vi.2024
+count: 4
+
+location1: Italia, Trentino Alto Adige,
+location2: Giustino (TN), Vedretta d'Amola
+code: H1
+date: 17.vi.2024
+count: 2
+
+location1: Italia, Lombardia,
+location2: Sondrio, Valmalenco
+code: O1
+date: 20.vii.2024
+notes: leg. Rossi
+count: 2
