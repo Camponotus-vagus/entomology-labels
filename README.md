@@ -3,41 +3,41 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Genera etichette professionali per specimen entomologici con supporto per molteplici formati di input e output.
+Generate professional entomology specimen labels with support for multiple input and output formats.
 
-## Caratteristiche
+## Features
 
-- **Interfaccia Grafica (GUI)**: Interfaccia intuitiva per creare e gestire etichette
-- **Interfaccia Linea di Comando (CLI)**: Per automazione e scripting
-- **Formati di Input Multipli**: Excel (.xlsx, .xls), CSV, TXT, Word (.docx), JSON, YAML
-- **Formati di Output Multipli**: HTML, PDF, Word (.docx)
-- **Layout Configurabile**: 10x13 etichette per pagina (default A4), completamente personalizzabile
-- **Generazione Sequenziale**: Crea serie di etichette con codici incrementali (N1, N2, N3...)
+- **Graphical User Interface (GUI)**: Intuitive interface to create and manage labels with a real-time visual preview.
+- **Command Line Interface (CLI)**: For automation and scripting.
+- **Multiple Input Formats**: Excel (.xlsx, .xls), CSV, TXT, Word (.docx), JSON, YAML.
+- **Multiple Output Formats**: HTML, PDF, Word (.docx).
+- **Configurable Layout**: Fully customizable labels per page, dimensions, margins, and typography.
+- **Sequential Generation**: Create series of labels with incremental codes (e.g., N1, N2, N3...).
 
-## Formato Etichetta
+## Label Format
 
-Ogni etichetta contiene:
+Each label typically contains:
 ```
-Italia, Trentino Alto Adige,        ← Riga 1: Località principale
-Giustino (TN), Vedretta d'Amola     ← Riga 2: Località secondaria
-                                     ← Riga vuota
-N1                                   ← Codice specimen
-15.vi.2024                          ← Data raccolta
+Italy, Trentino Alto Adige,        ← Line 1: Main Location
+Giustino (TN), Vedretta d'Amola     ← Line 2: Secondary Location
+                                     ← Empty line
+N1                                   ← Specimen Code
+15.vi.2024                          ← Collection Date
 ```
 
-## Installazione
+## Installation
 
-### Opzione 1: pip (consigliato)
+### Option 1: pip (Recommended)
 
 ```bash
-# Installazione base
+# Base installation
 pip install entomology-labels
 
-# Con supporto completo (tutti i formati)
+# With full support (all formats)
 pip install entomology-labels[all]
 ```
 
-### Opzione 2: Da sorgente
+### Option 2: From Source
 
 ```bash
 git clone https://github.com/Camponotus-vagus/entomology-labels.git
@@ -45,128 +45,128 @@ cd entomology-labels
 pip install -e .[all]
 ```
 
-### Dipendenze Opzionali
+### Optional Dependencies
 
-| Feature | Pacchetti | Installazione |
+| Feature | Packages | Installation |
 |---------|-----------|---------------|
 | Excel | pandas, openpyxl | `pip install entomology-labels[excel]` |
 | Word | python-docx | `pip install entomology-labels[docx]` |
 | PDF | weasyprint | `pip install entomology-labels[pdf]` |
 | YAML | pyyaml | `pip install entomology-labels[yaml]` |
-| Tutto | - | `pip install entomology-labels[all]` |
+| All | - | `pip install entomology-labels[all]` |
 
-> **Nota**: Per la generazione PDF, weasyprint richiede dipendenze di sistema aggiuntive. Consulta la [documentazione weasyprint](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html).
+> **Note**: For PDF generation, weasyprint requires additional system dependencies. See [weasyprint documentation](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html).
 
-## Utilizzo
+## Usage
 
-### Interfaccia Grafica (GUI)
+### Graphical User Interface (GUI)
 
 ```bash
 entomology-labels-gui
 ```
 
-O da Python:
+Or from Python:
 
 ```python
 from entomology_labels.gui import main
 main()
 ```
 
-La GUI permette di:
-- Aggiungere etichette manualmente
-- Importare dati da file
-- Configurare layout e dimensioni
-- Visualizzare anteprima
-- Esportare in HTML, PDF, DOCX
+The GUI allows you to:
+- Add labels manually or through a guided form.
+- Import data from various file formats.
+- Edit or duplicate labels in the list.
+- Configure layout and dimensions with a visual mockup.
+- Export to HTML, PDF, or DOCX.
 
-### Linea di Comando (CLI)
+### Command Line Interface (CLI)
 
 ```bash
-# Genera etichette da file Excel a HTML
-entomology-labels generate dati.xlsx -o etichette.html
+# Generate labels from Excel to HTML
+entomology-labels generate data.xlsx -o labels.html
 
-# Genera etichette da CSV a PDF
-entomology-labels generate dati.csv -o etichette.pdf
+# Generate labels from CSV to PDF
+entomology-labels generate data.csv -o labels.pdf
 
-# Genera etichette da JSON a Word
-entomology-labels generate dati.json -o etichette.docx
+# Generate labels from JSON to Word
+entomology-labels generate data.json -o labels.docx
 
-# Con layout personalizzato
-entomology-labels generate dati.xlsx -o etichette.html --rows 12 --cols 15
+# With custom layout
+entomology-labels generate data.xlsx -o labels.html --rows 12 --cols 15
 
-# Apri il file dopo la generazione
-entomology-labels generate dati.xlsx -o etichette.html --open
+# Open file after generation
+entomology-labels generate data.xlsx -o labels.html --open
 ```
 
-#### Generazione Sequenziale
+#### Sequential Generation
 
 ```bash
 entomology-labels sequence \
-  --location1 "Italia, Trentino Alto Adige," \
+  --location1 "Italy, Trentino Alto Adige," \
   --location2 "Giustino (TN), Vedretta d'Amola" \
   --prefix N --start 1 --end 50 \
   --date "15.vi.2024" \
-  -o etichette.html
+  -o labels.html
 ```
 
-#### Creare Template
+#### Create Templates
 
 ```bash
-# Crea template JSON
-entomology-labels template miei_dati.json
+# Create JSON template
+entomology-labels template my_data.json
 
-# Crea template Excel
-entomology-labels template miei_dati.xlsx --format excel
+# Create Excel template
+entomology-labels template my_data.xlsx --format excel
 
-# Crea template CSV
-entomology-labels template miei_dati.csv --format csv
+# Create CSV template
+entomology-labels template my_data.csv --format csv
 ```
 
-### API Python
+### Python API
 
 ```python
 from entomology_labels import LabelGenerator, Label, LabelConfig
 from entomology_labels import load_data, generate_html, generate_pdf, generate_docx
 
-# Configurazione layout
+# Layout configuration
 config = LabelConfig(
     labels_per_row=10,
     labels_per_column=13,
     font_size_pt=6,
 )
 
-# Crea generatore
+# Create generator
 generator = LabelGenerator(config)
 
-# Aggiungi etichette manualmente
+# Add labels manually
 label = Label(
-    location_line1="Italia, Trentino Alto Adige,",
+    location_line1="Italy, Trentino Alto Adige,",
     location_line2="Giustino (TN), Vedretta d'Amola",
     code="N1",
     date="15.vi.2024"
 )
 generator.add_label(label)
 
-# Oppure carica da file
-labels = load_data("dati.xlsx")
+# Or load from file
+labels = load_data("data.xlsx")
 generator.add_labels(labels)
 
-# Genera output
-generate_html(generator, "etichette.html", open_in_browser=True)
-generate_pdf(generator, "etichette.pdf")
-generate_docx(generator, "etichette.docx")
+# Generate output
+generate_html(generator, "labels.html", open_in_browser=True)
+generate_pdf(generator, "labels.pdf")
+generate_docx(generator, "labels.docx")
 ```
 
-#### Generazione Sequenziale
+#### Sequential Generation
 
 ```python
 from entomology_labels import LabelGenerator
 
 generator = LabelGenerator()
 
-# Genera N1 fino a N50
+# Generate N1 to N50
 labels = generator.generate_sequential_labels(
-    location_line1="Italia, Trentino Alto Adige,",
+    location_line1="Italy, Trentino Alto Adige,",
     location_line2="Giustino (TN), Vedretta d'Amola",
     code_prefix="N",
     start_number=1,
@@ -176,25 +176,25 @@ labels = generator.generate_sequential_labels(
 generator.add_labels(labels)
 ```
 
-## Formati File di Input
+## Input File Formats
 
 ### Excel (.xlsx, .xls)
 
-Crea un foglio con le colonne:
+Create a sheet with columns:
 
 | location_line1 | location_line2 | code | date | count |
 |----------------|----------------|------|------|-------|
-| Italia, Trentino Alto Adige, | Giustino (TN), Vedretta d'Amola | N1 | 15.vi.2024 | 5 |
-| Italia, Lombardia, | Sondrio, Valmalenco | O1 | 20.vii.2024 | 3 |
+| Italy, Trentino Alto Adige, | Giustino (TN), Vedretta d'Amola | N1 | 15.vi.2024 | 5 |
+| Italy, Lombardia, | Sondrio, Valmalenco | O1 | 20.vii.2024 | 3 |
 
-La colonna `count` è opzionale e serve per duplicare le etichette.
+The `count` column is optional and used to create multiple copies of a label.
 
 ### CSV
 
 ```csv
 location_line1,location_line2,code,date,count
-"Italia, Trentino Alto Adige,","Giustino (TN), Vedretta d'Amola",N1,15.vi.2024,5
-"Italia, Lombardia,","Sondrio, Valmalenco",O1,20.vii.2024,3
+"Italy, Trentino Alto Adige,","Giustino (TN), Vedretta d'Amola",N1,15.vi.2024,5
+"Italy, Lombardia,","Sondrio, Valmalenco",O1,20.vii.2024,3
 ```
 
 ### JSON
@@ -203,7 +203,7 @@ location_line1,location_line2,code,date,count
 {
   "labels": [
     {
-      "location_line1": "Italia, Trentino Alto Adige,",
+      "location_line1": "Italy, Trentino Alto Adige,",
       "location_line2": "Giustino (TN), Vedretta d'Amola",
       "code": "N1",
       "date": "15.vi.2024",
@@ -213,76 +213,76 @@ location_line1,location_line2,code,date,count
 }
 ```
 
-### TXT (formato chiave-valore)
+### TXT (Key-Value Format)
 
 ```
-location1: Italia, Trentino Alto Adige,
+location1: Italy, Trentino Alto Adige,
 location2: Giustino (TN), Vedretta d'Amola
 code: N1
 date: 15.vi.2024
 count: 5
 
-location1: Italia, Lombardia,
+location1: Italy, Lombardia,
 location2: Sondrio, Valmalenco
 code: O1
 date: 20.vii.2024
 count: 3
 ```
 
-### Nomi Colonne Alternativi
+### Alternative Column Names
 
-Il software riconosce vari nomi per le colonne:
+The software recognizes several variations for column names:
 
-| Campo | Nomi accettati |
+| Field | Accepted Names |
 |-------|----------------|
-| location_line1 | location1, località1, location, loc1 |
-| location_line2 | location2, località2, loc2 |
-| code | specimen_code, codice, id |
-| date | collection_date, data, data_raccolta |
-| count | quantity, quantità, n, copies |
+| location_line1 | location1, location, loc1 |
+| location_line2 | location2, loc2 |
+| code | specimen_code, id, specimen_id |
+| date | collection_date, collection_date |
+| count | quantity, n, copies |
 
-## Configurazione Layout
+## Layout Configuration
 
-### Parametri Disponibili
+### Available Parameters
 
-| Parametro | Default | Descrizione |
+| Parameter | Default | Description |
 |-----------|---------|-------------|
-| labels_per_row | 10 | Etichette per riga |
-| labels_per_column | 13 | Etichette per colonna |
-| label_width_mm | 21.0 | Larghezza etichetta (mm) |
-| label_height_mm | 22.85 | Altezza etichetta (mm) |
-| page_width_mm | 210.0 | Larghezza pagina (mm) |
-| page_height_mm | 297.0 | Altezza pagina (mm) |
-| font_size_pt | 6.0 | Dimensione font (pt) |
-| font_family | Arial | Famiglia font |
+| labels_per_row | 10 | Labels per row |
+| labels_per_column | 13 | Labels per column |
+| label_width_mm | 29.0 | Label width (mm) |
+| label_height_mm | 13.0 | Label height (mm) |
+| page_width_mm | 297.0 | Page width (mm) |
+| page_height_mm | 210.0 | Page height (mm) |
+| font_size_pt | 6.0 | Font size (pt) |
+| font_family | Arial | Font family |
 
-### Preimpostazioni
+### Presets
 
-- **A4 Standard**: 10x13 etichette (130 per pagina)
-- **A4 Compatto**: 12x15 etichette (180 per pagina)
-- **Letter US**: 10x12 etichette (120 per pagina)
+- **A4 Standard (Landscape)**: 10x13 labels (130 per page)
+- **A4 Compact (Landscape)**: 12x15 labels (180 per page)
+- **US Letter (Landscape)**: 10x12 labels (120 per page)
 
-## Output HTML e Stampa PDF
+## HTML Output and PDF Printing
 
-L'output HTML include un pulsante "Stampa" che apre la finestra di stampa del browser. Per salvare come PDF:
+HTML output includes a "Print" button that opens the browser's print dialog. To save as PDF:
 
-1. Genera il file HTML
-2. Aprilo nel browser
-3. Clicca "Stampa" o usa Ctrl+P (Cmd+P su Mac)
-4. Seleziona "Salva come PDF" come destinazione
-5. Assicurati che i margini siano impostati su "Nessuno"
+1. Generate the HTML file.
+2. Open it in your browser.
+3. Click "Print" or use Ctrl+P (Cmd+P on Mac).
+4. Select "Save as PDF" as the destination.
+5. Ensure margins are set to "None".
 
-## Esempi
+## Examples
 
-La cartella `examples/` contiene file di esempio:
+The `examples/` directory contains sample files:
 
-- `example_labels.json` - Formato JSON
-- `example_labels.csv` - Formato CSV
-- `example_labels.txt` - Formato TXT
+- `example_labels.json` - JSON format
+- `example_labels.csv` - CSV format
+- `example_labels.txt` - TXT format
 
-## Risoluzione Problemi
+## Troubleshooting
 
-### Errore "weasyprint not found"
+### "weasyprint not found" Error
 
 ```bash
 # Ubuntu/Debian
@@ -291,36 +291,36 @@ sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
 # macOS
 brew install pango
 
-# Poi installa weasyprint
+# Then install weasyprint
 pip install weasyprint
 ```
 
-### Errore "pandas not found"
+### "pandas not found" Error
 
 ```bash
 pip install pandas openpyxl
 ```
 
-### Le etichette non si allineano correttamente
+### Labels are not aligned correctly
 
-- Verifica che i margini della stampante siano impostati su 0
-- Usa la modalità "Adatta alla pagina" se necessario
-- Prova a regolare i parametri `margin_*` nella configurazione
+- Ensure printer margins are set to 0.
+- Use "Fit to page" mode if necessary.
+- Adjust `margin_*` parameters in the configuration.
 
-## Contribuire
+## Contributing
 
-Contributi sono benvenuti! Per contribuire:
+Contributions are welcome! To contribute:
 
-1. Fork del repository
-2. Crea un branch per la feature (`git checkout -b feature/NuovaFeature`)
-3. Commit delle modifiche (`git commit -m 'Aggiunge NuovaFeature'`)
-4. Push al branch (`git push origin feature/NuovaFeature`)
-5. Apri una Pull Request
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/NewFeature`).
+3. Commit your changes (`git commit -m 'Add NewFeature'`).
+4. Push to the branch (`git push origin feature/NewFeature`).
+5. Open a Pull Request.
 
-## Licenza
+## License
 
-Questo progetto è rilasciato sotto licenza MIT. Vedi il file [LICENSE](LICENSE) per i dettagli.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-## Crediti
+## Credits
 
-Ispirato da [insect-labels](https://github.com/tracyyao27/insect-labels) di Tracy Yao.
+Inspired by [insect-labels](https://github.com/tracyyao27/insect-labels) by Tracy Yao.
