@@ -109,15 +109,15 @@ class EntomologyLabelsGUI:
         top_frame = ttk.LabelFrame(data_frame, text="Import & Actions", padding="10")
         top_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 10))
 
-        ttk.Button(
-            top_frame, text="Import from File...", command=self._import_data
-        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(top_frame, text="Import from File...", command=self._import_data).pack(
+            side=tk.LEFT, padx=5
+        )
         ttk.Button(
             top_frame, text="Generate Sequential...", command=self._show_sequential_dialog
         ).pack(side=tk.LEFT, padx=5)
-        ttk.Button(
-            top_frame, text="Clear All", command=self._clear_labels
-        ).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(top_frame, text="Clear All", command=self._clear_labels).pack(
+            side=tk.RIGHT, padx=5
+        )
 
         # PanedWindow for entry form and list
         paned = ttk.PanedWindow(data_frame, orient=tk.HORIZONTAL)
@@ -154,7 +154,9 @@ class EntomologyLabelsGUI:
         btn_frame.grid(row=len(fields), column=0, columnspan=2, pady=15)
 
         ttk.Button(btn_frame, text="Add Label", command=self._add_label).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Clear Form", command=self._clear_form).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Clear Form", command=self._clear_form).pack(
+            side=tk.LEFT, padx=5
+        )
 
         # Right panel - Labels list
         right_frame = ttk.LabelFrame(paned, text="Label List", padding="10")
@@ -213,8 +215,12 @@ class EntomologyLabelsGUI:
         ttk.Label(controls_frame, text="Page:").pack(side=tk.LEFT, padx=(20, 5))
         self.page_var = tk.StringVar(value="1")
         self.page_spinbox = ttk.Spinbox(
-            controls_frame, from_=1, to=1, textvariable=self.page_var, width=5,
-            command=self._update_preview
+            controls_frame,
+            from_=1,
+            to=1,
+            textvariable=self.page_var,
+            width=5,
+            command=self._update_preview,
         )
         self.page_spinbox.pack(side=tk.LEFT)
         self.total_pages_label = ttk.Label(controls_frame, text="of 0")
@@ -239,9 +245,13 @@ class EntomologyLabelsGUI:
         self.preview_canvas = tk.Canvas(canvas_frame, bg="gray")
         self.preview_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        v_scroll = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.preview_canvas.yview)
+        v_scroll = ttk.Scrollbar(
+            canvas_frame, orient=tk.VERTICAL, command=self.preview_canvas.yview
+        )
         v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        h_scroll = ttk.Scrollbar(preview_frame, orient=tk.HORIZONTAL, command=self.preview_canvas.xview)
+        h_scroll = ttk.Scrollbar(
+            preview_frame, orient=tk.HORIZONTAL, command=self.preview_canvas.xview
+        )
         h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
 
         self.preview_canvas.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
@@ -260,10 +270,7 @@ class EntomologyLabelsGUI:
         scrollable_frame = ttk.Frame(config_canvas, padding="20")
 
         scrollable_frame.bind(
-            "<Configure>",
-            lambda e: config_canvas.configure(
-                scrollregion=config_canvas.bbox("all")
-            )
+            "<Configure>", lambda e: config_canvas.configure(scrollregion=config_canvas.bbox("all"))
         )
 
         config_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
@@ -298,7 +305,9 @@ class EntomologyLabelsGUI:
             ttk.Label(layout_group, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=5)
             var = tk.StringVar(value=default)
             self.config_vars[var_name] = var
-            ttk.Entry(layout_group, textvariable=var, width=15).grid(row=i, column=1, sticky=tk.W, pady=5, padx=10)
+            ttk.Entry(layout_group, textvariable=var, width=15).grid(
+                row=i, column=1, sticky=tk.W, pady=5, padx=10
+            )
 
         # Page
         page_group = ttk.LabelFrame(scrollable_frame, text="Page & Margins", padding="15")
@@ -317,7 +326,9 @@ class EntomologyLabelsGUI:
             ttk.Label(page_group, text=label_text).grid(row=i, column=0, sticky=tk.W, pady=5)
             var = tk.StringVar(value=default)
             self.config_vars[var_name] = var
-            ttk.Entry(page_group, textvariable=var, width=15).grid(row=i, column=1, sticky=tk.W, pady=5, padx=10)
+            ttk.Entry(page_group, textvariable=var, width=15).grid(
+                row=i, column=1, sticky=tk.W, pady=5, padx=10
+            )
 
         # Font
         font_group = ttk.LabelFrame(scrollable_frame, text="Typography", padding="15")
@@ -335,25 +346,41 @@ class EntomologyLabelsGUI:
 
         ttk.Label(font_group, text="Font Size (pt):").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.config_vars["font_size_pt"] = tk.StringVar(value="6")
-        ttk.Entry(font_group, textvariable=self.config_vars["font_size_pt"], width=15).grid(row=1, column=1, sticky=tk.W, pady=5, padx=10)
+        ttk.Entry(font_group, textvariable=self.config_vars["font_size_pt"], width=15).grid(
+            row=1, column=1, sticky=tk.W, pady=5, padx=10
+        )
 
         ttk.Label(font_group, text="Line Spacing:").grid(row=2, column=0, sticky=tk.W, pady=5)
         self.config_vars["line_spacing"] = tk.StringVar(value="1.0")
-        ttk.Entry(font_group, textvariable=self.config_vars["line_spacing"], width=15).grid(row=2, column=1, sticky=tk.W, pady=5, padx=10)
+        ttk.Entry(font_group, textvariable=self.config_vars["line_spacing"], width=15).grid(
+            row=2, column=1, sticky=tk.W, pady=5, padx=10
+        )
 
         # Buttons
         actions_frame = ttk.Frame(scrollable_frame)
         actions_frame.pack(fill=tk.X, pady=20)
 
-        ttk.Button(actions_frame, text="Apply Changes", command=self._apply_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(actions_frame, text="Apply Changes", command=self._apply_config).pack(
+            side=tk.LEFT, padx=5
+        )
 
         # Presets
         preset_group = ttk.LabelFrame(scrollable_frame, text="Presets", padding="15")
         preset_group.pack(fill=tk.X, pady=10)
 
-        ttk.Button(preset_group, text="A4 Landscape (10x13)", command=lambda: self._apply_preset("a4_standard")).pack(side=tk.LEFT, padx=5)
-        ttk.Button(preset_group, text="A4 Compact (12x15)", command=lambda: self._apply_preset("a4_compact")).pack(side=tk.LEFT, padx=5)
-        ttk.Button(preset_group, text="US Letter (10x12)", command=lambda: self._apply_preset("letter_us")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            preset_group,
+            text="A4 Landscape (10x13)",
+            command=lambda: self._apply_preset("a4_standard"),
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            preset_group,
+            text="A4 Compact (12x15)",
+            command=lambda: self._apply_preset("a4_compact"),
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            preset_group, text="US Letter (10x12)", command=lambda: self._apply_preset("letter_us")
+        ).pack(side=tk.LEFT, padx=5)
 
     def _setup_status_bar(self, parent):
         """Setup the status bar."""
@@ -377,7 +404,8 @@ class EntomologyLabelsGUI:
         try:
             qty_str = self.entry_vars["quantity"].get().strip()
             quantity = int(qty_str) if qty_str else 1
-            if quantity <= 0: quantity = 1
+            if quantity <= 0:
+                quantity = 1
         except ValueError:
             quantity = 1
 
@@ -432,9 +460,7 @@ class EntomologyLabelsGUI:
             ("YAML", "*.yaml *.yml"),
         ]
 
-        file_path = filedialog.askopenfilename(
-            title="Select File to Import", filetypes=filetypes
-        )
+        file_path = filedialog.askopenfilename(title="Select File to Import", filetypes=filetypes)
 
         if not file_path:
             return
@@ -475,7 +501,7 @@ class EntomologyLabelsGUI:
                     label.location_line2[:30] + ("..." if len(label.location_line2) > 30 else ""),
                     label.code,
                     label.date,
-                    "1"
+                    "1",
                 ),
             )
 
@@ -514,13 +540,15 @@ class EntomologyLabelsGUI:
         for idx in indices:
             if idx < len(self.generator.labels):
                 label = self.generator.labels[idx]
-                new_labels.append(Label(
-                    location_line1=label.location_line1,
-                    location_line2=label.location_line2,
-                    code=label.code,
-                    date=label.date,
-                    additional_info=label.additional_info
-                ))
+                new_labels.append(
+                    Label(
+                        location_line1=label.location_line1,
+                        location_line2=label.location_line2,
+                        code=label.code,
+                        date=label.date,
+                        additional_info=label.additional_info,
+                    )
+                )
 
         self.generator.add_labels(new_labels)
         self._update_labels_tree()
@@ -566,12 +594,14 @@ class EntomologyLabelsGUI:
             # Basic validation
             def get_int(name, min_val=1):
                 val = int(self.config_vars[name].get())
-                if val < min_val: raise ValueError(f"{name} must be at least {min_val}")
+                if val < min_val:
+                    raise ValueError(f"{name} must be at least {min_val}")
                 return val
 
             def get_float(name, min_val=0.0):
                 val = float(self.config_vars[name].get())
-                if val < min_val: raise ValueError(f"{name} must be at least {min_val}")
+                if val < min_val:
+                    raise ValueError(f"{name} must be at least {min_val}")
                 return val
 
             config = LabelConfig(
@@ -647,7 +677,8 @@ class EntomologyLabelsGUI:
         except ValueError:
             page_num = 0
 
-        if page_num < 0: page_num = 0
+        if page_num < 0:
+            page_num = 0
         if page_num >= self.generator.total_pages:
             page_num = max(0, self.generator.total_pages - 1)
             self.page_var.set(str(page_num + 1))
@@ -662,9 +693,7 @@ class EntomologyLabelsGUI:
         scale = 3.5
 
         self.paper_frame.config(
-            width=config.page_width_mm * scale,
-            height=config.page_height_mm * scale,
-            bg="white"
+            width=config.page_width_mm * scale, height=config.page_height_mm * scale, bg="white"
         )
 
         for r, row_labels in enumerate(grid):
@@ -677,7 +706,7 @@ class EntomologyLabelsGUI:
                         height=config.label_height_mm * scale,
                         bg="white",
                         highlightbackground="#eee",
-                        highlightthickness=1
+                        highlightthickness=1,
                     )
                     l_frame.grid(row=r, column=c)
                     l_frame.grid_propagate(False)
@@ -687,11 +716,40 @@ class EntomologyLabelsGUI:
                     content_frame = tk.Frame(l_frame, bg="white")
                     content_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
-                    tk.Label(content_frame, text=label.location_line1, font=(config.font_family, font_size), bg="white", anchor="w").pack(fill=tk.X)
-                    tk.Label(content_frame, text=label.location_line2, font=(config.font_family, font_size), bg="white", anchor="w").pack(fill=tk.X)
-                    tk.Label(content_frame, text="", font=(config.font_family, font_size // 2), bg="white").pack() # Spacer
-                    tk.Label(content_frame, text=label.code, font=(config.font_family, font_size), bg="white", anchor="w").pack(fill=tk.X)
-                    tk.Label(content_frame, text=label.date, font=(config.font_family, font_size), bg="white", anchor="w").pack(fill=tk.X)
+                    tk.Label(
+                        content_frame,
+                        text=label.location_line1,
+                        font=(config.font_family, font_size),
+                        bg="white",
+                        anchor="w",
+                    ).pack(fill=tk.X)
+                    tk.Label(
+                        content_frame,
+                        text=label.location_line2,
+                        font=(config.font_family, font_size),
+                        bg="white",
+                        anchor="w",
+                    ).pack(fill=tk.X)
+                    tk.Label(
+                        content_frame,
+                        text="",
+                        font=(config.font_family, font_size // 2),
+                        bg="white",
+                    ).pack()  # Spacer
+                    tk.Label(
+                        content_frame,
+                        text=label.code,
+                        font=(config.font_family, font_size),
+                        bg="white",
+                        anchor="w",
+                    ).pack(fill=tk.X)
+                    tk.Label(
+                        content_frame,
+                        text=label.date,
+                        font=(config.font_family, font_size),
+                        bg="white",
+                        anchor="w",
+                    ).pack(fill=tk.X)
                 else:
                     # Empty cell
                     l_frame = tk.Frame(
@@ -700,7 +758,7 @@ class EntomologyLabelsGUI:
                         height=config.label_height_mm * scale,
                         bg="#fafafa",
                         highlightbackground="#f0f0f0",
-                        highlightthickness=1
+                        highlightthickness=1,
                     )
                     l_frame.grid(row=r, column=c)
 
