@@ -4,9 +4,46 @@ Core label generator module.
 Handles the generation of entomology labels with configurable dimensions and layout.
 """
 
+import logging
 import math
 from dataclasses import dataclass, field
 from typing import List, Optional
+
+from .config import (
+    MAX_LABELS_PER_GENERATOR,
+    MAX_SEQUENTIAL_LABELS,
+    LABEL_WIDTH_MM_MIN,
+    LABEL_WIDTH_MM_MAX,
+    LABEL_HEIGHT_MM_MIN,
+    LABEL_HEIGHT_MM_MAX,
+    FONT_SIZE_PT_MIN,
+    FONT_SIZE_PT_MAX,
+    MARGIN_MM_MIN,
+    MARGIN_MM_MAX,
+    DPI_MIN,
+    DPI_MAX,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _sanitize_string(value: str) -> str:
+    """Sanitize string input by removing dangerous characters.
+    
+    Args:
+        value: Input string to sanitize
+        
+    Returns:
+        Sanitized string with null bytes and control characters removed
+    """
+    if not value:
+        return ""
+    
+    # Remove null bytes and control characters except newlines, tabs, carriage returns
+    return ''.join(
+        c for c in str(value) 
+        if c in '\n\r\t' or (ord(c) >= 32 and ord(c) != 127)
+    )
 
 
 @dataclass
@@ -47,6 +84,60 @@ class LabelConfig:
     font_family: str = "Arial"
     line_spacing: float = 1.0
     orientation: str = "landscape"  # 'landscape' or 'portrait'
+
+    def __post_init__(self):
+        """Validate configuration values after initialization."""
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validate all configuration values are within safe bounds.
+        
+        Raises:
+            ValueError: If any configuration value is out of bounds
+        """
+        if not (LABEL_WIDTH_MM_MIN <= self.label_width_mm <= LABEL_WIDTH_MM_MAX):
+            raise ValueError(
+                f"label_width_mm must be between {LABEL_WIDTH_MM_MIN} and "
+                f"{LABEL_WIDTH_MM_MAX}, got {self.label_width_mm}"
+            )
+        if not (LABEL_HEIGHT_MM_MIN <= self.label_height_mm <= LABEL_HEIGHT_MM_MAX):
+            raise ValueError(
+                f"label_height_mm must be between {LABEL_HEIGHT_MM_MIN} and "
+                f"{LABEL_HEIGHT_MM_MAX}, got {self.label_height_mm}"
+            )
+        if not (FONT_SIZE_PT_MIN <= self.font_size_pt <= FONT_SIZE_PT_MAX):
+            raise ValueError(
+                f"font_size_pt must be between {FONT_SIZE_PT_MIN} and "
+                f"{FONT_SIZE_PT_MAX}, got {self.font_size_pt}"
+            )
+        if not (MARGIN_MM_MIN <= self.margin_top_mm <= MARGIN_MM_MAX):
+            raise ValueError(
+                f"margin_top_mm must be between {MARGIN_MM_MIN} and "
+                f"{MARGIN_MM_MAX}, got {self.margin_top_mm}"
+            )
+        if not (MARGIN_MM_MIN <= self.margin_bottom_mm <= MARGIN_MM_MAX):
+            raise ValueError(
+                f"margin_bottom_mm must be between {MARGIN_MM_MIN} and "
+                f"{MARGIN_MM_MAX}, got {self.margin_bottom_mm}"
+            )
+        if not (MARGIN_MM_MIN <= self.margin_left_mm <= MARGIN_MM_MAX):
+            raise ValueError(
+                f"margin_left_mm must be between {MARGIN_MM_MIN} and "
+                f"{MARGIN_MM_MAX}, got {self.margin_left_mm}"
+            )
+        if not (MARGIN_MM_MIN <= self.margin_right_mm <= MARGIN_MM_MAX):
+            raise ValueError(
+                f"margin_right_mm must be between {MARGIN_MM_MIN} and "
+                f"{MARGIN_MM_MAX}, got {self.margin_right_mm}"
+            )
+        if not (DPI_MIN <= self.dpi <= DPI_MAX) if hasattr(self, 'dpi') else True:
+            pass  # dpi validation handled separately if set
+        
+        if self.orientation.lower() not in ('landscape', 'portrait'):
+            raise ValueError(
+                f"orientation must be 'landscape' or 'portrait', "
+                f"got '{self.orientation}'"
+            )
 
     @property
     def is_landscape(self) -> bool:
@@ -111,6 +202,14 @@ class Label:
     date: str = ""
     additional_info: str = ""
 
+    def __post_init__(self):
+        """Sanitize all string fields after initialization."""
+        self.location_line1 = _sanitize_string(self.location_line1)
+        self.location_line2 = _sanitize_string(self.location_line2)
+        self.code = _sanitize_string(self.code)
+        self.date = _sanitize_string(self.date)
+        self.additional_info = _sanitize_string(self.additional_info)
+
     def is_empty(self) -> bool:
         """Check if the label has no content."""
         return not any(
@@ -161,11 +260,29 @@ class LabelGenerator:
         self.labels: List[Label] = []
 
     def add_label(self, label: Label) -> None:
-        """Add a single label to the generator."""
+        """Add a single label to the generator.
+        
+        Raises:
+            ValueError: If adding this label would exceed the maximum limit
+        """
+        if len(self.labels) >= MAX_LABELS_PER_GENERATOR:
+            raise ValueError(
+                f"Maximum label count ({MAX_LABELS_PER_GENERATOR}) exceeded. "
+                "Cannot add more labels."
+            )
         self.labels.append(label)
 
     def add_labels(self, labels: List[Label]) -> None:
-        """Add multiple labels to the generator."""
+        """Add multiple labels to the generator.
+        
+        Raises:
+            ValueError: If adding these labels would exceed the maximum limit
+        """
+        if len(self.labels) + len(labels) > MAX_LABELS_PER_GENERATOR:
+            raise ValueError(
+                f"Maximum label count ({MAX_LABELS_PER_GENERATOR}) exceeded. "
+                f"Current: {len(self.labels)}, Adding: {len(labels)}"
+            )
         self.labels.extend(labels)
 
     def clear_labels(self) -> None:
@@ -265,7 +382,20 @@ class LabelGenerator:
 
         Returns:
             List of generated labels
+            
+        Raises:
+            ValueError: If the number of sequential labels exceeds the limit
         """
+        # Validate the range to prevent DoS
+        count = end_number - start_number + 1
+        if count > MAX_SEQUENTIAL_LABELS:
+            raise ValueError(
+                f"Cannot generate more than {MAX_SEQUENTIAL_LABELS} sequential labels. "
+                f"Requested: {count} (from {start_number} to {end_number})"
+            )
+        
+        logger.info(f"Generating {count} sequential labels with prefix '{code_prefix}'")
+        
         labels = []
         for i in range(start_number, end_number + 1):
             labels.append(
