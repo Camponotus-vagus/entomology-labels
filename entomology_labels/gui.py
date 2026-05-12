@@ -5,16 +5,31 @@ Provides an easy-to-use interface for creating and exporting entomology labels.
 """
 
 import json
+import logging
 import tempfile
 import tkinter as tk
 import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Optional
+from urllib.parse import quote
 
+from .config import (
+    MAX_DISPLAYED_LABELS,
+    LABEL_WIDTH_MM_MIN,
+    LABEL_WIDTH_MM_MAX,
+    LABEL_HEIGHT_MM_MIN,
+    LABEL_HEIGHT_MM_MAX,
+    FONT_SIZE_PT_MIN,
+    FONT_SIZE_PT_MAX,
+    MARGIN_MM_MIN,
+    MARGIN_MM_MAX,
+)
 from .input_handlers import load_data
 from .label_generator import Label, LabelConfig, LabelGenerator
 from .output_generators import generate_docx, generate_html, generate_pdf
+
+logger = logging.getLogger(__name__)
 
 
 class EntomologyLabelsGUI:
@@ -466,15 +481,23 @@ class EntomologyLabelsGUI:
             return
 
         try:
+            logger.info(f"Importing data from: {file_path}")
             labels = load_data(file_path)
+            
+            # The add_labels method already checks the limit, so this will raise ValueError if exceeded
             self.generator.add_labels(labels)
             self._update_labels_tree()
+            logger.info(f"Successfully imported {len(labels)} labels")
             self._update_status(f"Imported {len(labels)} labels from {Path(file_path).name}")
 
             # Switch to data tab and update
             self.notebook.select(0)
 
+        except ValueError as e:
+            logger.error(f"Validation error during import: {e}")
+            messagebox.showerror("Import Error", f"Failed to import data:\n{str(e)}")
         except Exception as e:
+            logger.error(f"Failed to import data: {e}", exc_info=True)
             messagebox.showerror("Import Error", f"Failed to import data:\n{str(e)}")
 
     def _update_labels_tree(self):
@@ -591,33 +614,37 @@ class EntomologyLabelsGUI:
     def _apply_config(self):
         """Apply configuration changes with validation."""
         try:
-            # Basic validation
-            def get_int(name, min_val=1):
+            # Validation with min and max bounds
+            def get_int(name, min_val=1, max_val=None):
                 val = int(self.config_vars[name].get())
                 if val < min_val:
                     raise ValueError(f"{name} must be at least {min_val}")
+                if max_val is not None and val > max_val:
+                    raise ValueError(f"{name} must be at most {max_val}")
                 return val
 
-            def get_float(name, min_val=0.0):
+            def get_float(name, min_val=0.0, max_val=None):
                 val = float(self.config_vars[name].get())
                 if val < min_val:
                     raise ValueError(f"{name} must be at least {min_val}")
+                if max_val is not None and val > max_val:
+                    raise ValueError(f"{name} must be at most {max_val}")
                 return val
 
             config = LabelConfig(
-                labels_per_row=get_int("labels_per_row"),
-                labels_per_column=get_int("labels_per_column"),
-                label_width_mm=get_float("label_width_mm", 1.0),
-                label_height_mm=get_float("label_height_mm", 1.0),
-                page_width_mm=get_float("page_width_mm", 10.0),
-                page_height_mm=get_float("page_height_mm", 10.0),
-                margin_top_mm=get_float("margin_top_mm"),
-                margin_bottom_mm=get_float("margin_bottom_mm"),
-                margin_left_mm=get_float("margin_left_mm"),
-                margin_right_mm=get_float("margin_right_mm"),
+                labels_per_row=get_int("labels_per_row", 1, 50),
+                labels_per_column=get_int("labels_per_column", 1, 50),
+                label_width_mm=get_float("label_width_mm", LABEL_WIDTH_MM_MIN, LABEL_WIDTH_MM_MAX),
+                label_height_mm=get_float("label_height_mm", LABEL_HEIGHT_MM_MIN, LABEL_HEIGHT_MM_MAX),
+                page_width_mm=get_float("page_width_mm", 10.0, 500.0),
+                page_height_mm=get_float("page_height_mm", 10.0, 500.0),
+                margin_top_mm=get_float("margin_top_mm", MARGIN_MM_MIN, MARGIN_MM_MAX),
+                margin_bottom_mm=get_float("margin_bottom_mm", MARGIN_MM_MIN, MARGIN_MM_MAX),
+                margin_left_mm=get_float("margin_left_mm", MARGIN_MM_MIN, MARGIN_MM_MAX),
+                margin_right_mm=get_float("margin_right_mm", MARGIN_MM_MIN, MARGIN_MM_MAX),
                 font_family=self.config_vars["font_family"].get(),
-                font_size_pt=get_float("font_size_pt", 1.0),
-                line_spacing=get_float("line_spacing", 0.1),
+                font_size_pt=get_float("font_size_pt", FONT_SIZE_PT_MIN, FONT_SIZE_PT_MAX),
+                line_spacing=get_float("line_spacing", 0.1, 5.0),
             )
             self.generator.config = config
             self._update_labels_tree()
@@ -777,7 +804,9 @@ class EntomologyLabelsGUI:
         ) as f:
             html = generate_html(self.generator)
             f.write(html)
-            webbrowser.open(Path(f.name).absolute().as_uri())
+            # Safely open the temp file in browser
+            safe_path = quote(str(Path(f.name).resolve()))
+            webbrowser.open(f"file://{safe_path}")
 
     def _export(self, format_type: str):
         """Export labels to the specified format."""
@@ -815,15 +844,20 @@ class EntomologyLabelsGUI:
                 generate_docx(self.generator, file_path)
 
             self._update_status(f"Exported to {Path(file_path).name}")
+            logger.info(f"Successfully exported to {file_path}")
 
             if messagebox.askyesno(
                 "Export Successful", f"File saved to:\n{file_path}\n\nWould you like to open it?"
             ):
-                webbrowser.open(Path(file_path).absolute().as_uri())
+                # Safely open the file in browser/default app
+                safe_path = quote(str(Path(file_path).resolve()))
+                webbrowser.open(f"file://{safe_path}")
 
         except ImportError as e:
+            logger.error(f"Missing dependency for export: {e}")
             messagebox.showerror("Missing Dependency", str(e))
         except Exception as e:
+            logger.exception(f"Export failed")
             messagebox.showerror("Export Error", f"Failed to export:\n{str(e)}")
 
     def _show_sequential_dialog(self):

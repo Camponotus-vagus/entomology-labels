@@ -5,10 +5,75 @@ Supports: Excel (.xlsx, .xls), CSV, TXT, DOCX, JSON, YAML
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import List, Union
 
+from ..config import MAX_FILE_SIZE_BYTES
 from ..label_generator import Label
+
+logger = logging.getLogger(__name__)
+
+
+def _validate_file_path(file_path: Union[str, Path]) -> Path:
+    """Validate file path for security and existence.
+    
+    Args:
+        file_path: Path to validate
+        
+    Returns:
+        Resolved Path object
+        
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        ValueError: If path traversal detected or file too large
+        PermissionError: If file is not readable
+    """
+    path = Path(file_path).resolve()
+    
+    # Check if file exists
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+    
+    # Check if it's actually a file (not directory)
+    if not path.is_file():
+        raise ValueError(f"Not a file: {file_path}")
+    
+    # Check file size to prevent DoS
+    try:
+        file_size = path.stat().st_size
+        if file_size > MAX_FILE_SIZE_BYTES:
+            raise ValueError(
+                f"File too large: {file_size / (1024*1024):.2f}MB "
+                f"(max: {MAX_FILE_SIZE_BYTES / (1024*1024):.0f}MB)"
+            )
+    except OSError as e:
+        raise ValueError(f"Cannot access file: {e}")
+    
+    # Check read permissions
+    if not path.is_readable():
+        raise PermissionError(f"No read permission: {file_path}")
+    
+    return path
+
+
+def _sanitize_string(value: str) -> str:
+    """Sanitize string input by removing dangerous characters.
+    
+    Args:
+        value: Input string to sanitize
+        
+    Returns:
+        Sanitized string with null bytes and control characters removed
+    """
+    if not value:
+        return ""
+    
+    # Remove null bytes and control characters except newlines, tabs, carriage returns
+    return ''.join(
+        c for c in str(value) 
+        if c in '\n\r\t' or (ord(c) >= 32 and ord(c) != 127)
+    )
 
 
 def load_data(file_path: Union[str, Path]) -> List[Label]:
@@ -27,10 +92,9 @@ def load_data(file_path: Union[str, Path]) -> List[Label]:
         ValueError: If the file format is not supported
         FileNotFoundError: If the file does not exist
     """
-    path = Path(file_path)
-
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+    # Validate and secure the file path
+    path = _validate_file_path(file_path)
+    logger.info(f"Loading data from: {path}")
 
     extension = path.suffix.lower()
 
@@ -52,7 +116,13 @@ def load_data(file_path: Union[str, Path]) -> List[Label]:
             f"Unsupported file format: {extension}. " f"Supported formats: {supported}"
         )
 
-    return handler(path)
+    try:
+        labels = handler(path)
+        logger.info(f"Loaded {len(labels)} labels from {path}")
+        return labels
+    except Exception as e:
+        logger.error(f"Error loading data from {path}: {e}", exc_info=True)
+        raise
 
 
 def load_excel(file_path: Path) -> List[Label]:

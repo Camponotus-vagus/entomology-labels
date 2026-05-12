@@ -4,12 +4,16 @@ Output generators for various file formats.
 Supports: HTML, PDF, DOCX
 """
 
+import logging
 import tempfile
 import webbrowser
 from pathlib import Path
 from typing import Optional, Union
+from urllib.parse import quote
 
 from ..label_generator import LabelConfig, LabelGenerator
+
+logger = logging.getLogger(__name__)
 
 
 def generate_html(
@@ -31,11 +35,15 @@ def generate_html(
     html = _generate_html_content(generator)
 
     if output_path:
-        path = Path(output_path)
+        path = Path(output_path).resolve()
         path.write_text(html, encoding="utf-8")
+        logger.info(f"HTML file written to: {path}")
 
         if open_in_browser:
-            webbrowser.open(f"file://{path.absolute()}")
+            # Safely encode the path for URL usage
+            safe_path = quote(str(path.resolve()))
+            webbrowser.open(f"file://{safe_path}")
+            logger.info(f"Opening HTML file in browser: {path}")
 
     return html
 

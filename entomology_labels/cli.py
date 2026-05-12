@@ -4,14 +4,20 @@ Command Line Interface for Entomology Labels Generator.
 Provides commands for generating labels from various input formats.
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 import click
 
+from .config import LOG_FORMAT, LOG_LEVEL
 from .input_handlers import load_data
 from .label_generator import LabelConfig, LabelGenerator
 from .output_generators import generate_docx, generate_html, generate_pdf
+
+# Setup logging
+logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
+logger = logging.getLogger(__name__)
 
 
 @click.group()
@@ -81,8 +87,14 @@ def generate(
 
       entomology-labels generate labels.json -o output.docx --open
     """
-    input_path = Path(input_file)
-    output_path = Path(output)
+    if verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    
+    input_path = Path(input_file).resolve()
+    output_path = Path(output).resolve()
+
+    logger.info(f"Processing input file: {input_path}")
+    logger.info(f"Output file: {output_path}")
 
     # Determine output format
     output_format = output_path.suffix.lower()
@@ -97,7 +109,14 @@ def generate(
     # Load data
     try:
         labels = load_data(input_path)
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {input_path}")
+        raise click.ClickException(f"Input file not found: {input_path}")
+    except ValueError as e:
+        logger.error(f"Invalid input: {e}")
+        raise click.ClickException(f"Invalid input: {e}")
     except Exception as e:
+        logger.exception(f"Unexpected error loading data")
         raise click.ClickException(f"Error loading data: {e}")
 
     if not labels:
@@ -106,17 +125,22 @@ def generate(
     if verbose:
         click.echo(f"Loaded {len(labels)} labels")
 
+    logger.info(f"Loaded {len(labels)} labels from {input_path}")
+
     # Configure generator
-    config = LabelConfig(
-        labels_per_row=rows,
-        labels_per_column=cols,
-        label_width_mm=label_width,
-        label_height_mm=label_height,
-        page_width_mm=page_width,
-        page_height_mm=page_height,
-        font_size_pt=font_size,
-        font_family=font_family,
-    )
+    try:
+        config = LabelConfig(
+            labels_per_row=rows,
+            labels_per_column=cols,
+            label_width_mm=label_width,
+            label_height_mm=label_height,
+            page_width_mm=page_width,
+            page_height_mm=page_height,
+            font_size_pt=font_size,
+            font_family=font_family,
+        )
+    except ValueError as e:
+        raise click.ClickException(f"Invalid configuration: {e}")
 
     generator = LabelGenerator(config)
     generator.add_labels(labels)
@@ -124,6 +148,8 @@ def generate(
     if verbose:
         click.echo(f"Configuration: {rows}x{cols} labels per page")
         click.echo(f"Total pages: {generator.total_pages}")
+
+    logger.info(f"Generating {output_format[1:].upper()} output")
 
     # Generate output
     try:
@@ -136,10 +162,13 @@ def generate(
 
         click.echo(f"Generated {generator.total_labels} labels on {generator.total_pages} pages")
         click.echo(f"Output saved to: {output_path}")
+        logger.info(f"Successfully generated {generator.total_labels} labels on {generator.total_pages} pages")
 
     except ImportError as e:
+        logger.error(f"Missing dependency: {e}")
         raise click.ClickException(str(e))
     except Exception as e:
+        logger.exception(f"Error generating output")
         raise click.ClickException(f"Error generating output: {e}")
 
 
@@ -177,7 +206,7 @@ def sequence(
         --date "15.vi.2024" \\
         -o labels.html
     """
-    output_path = Path(output)
+    output_path = Path(output).resolve()
     output_format = output_path.suffix.lower()
 
     if output_format not in [".html", ".pdf", ".docx"]:
@@ -185,18 +214,30 @@ def sequence(
             f"Unsupported output format: {output_format}. " "Use .html, .pdf, or .docx"
         )
 
-    config = LabelConfig(labels_per_row=rows, labels_per_column=cols)
+    logger.info(f"Generating sequential labels: {prefix}{start} to {prefix}{end}")
+
+    try:
+        config = LabelConfig(labels_per_row=rows, labels_per_column=cols)
+    except ValueError as e:
+        raise click.ClickException(f"Invalid configuration: {e}")
+    
     generator = LabelGenerator(config)
 
-    labels = generator.generate_sequential_labels(
-        location_line1=location1,
-        location_line2=location2,
-        code_prefix=prefix,
-        start_number=start,
-        end_number=end,
-        date=date,
-    )
-    generator.add_labels(labels)
+    try:
+        labels = generator.generate_sequential_labels(
+            location_line1=location1,
+            location_line2=location2,
+            code_prefix=prefix,
+            start_number=start,
+            end_number=end,
+            date=date,
+        )
+        generator.add_labels(labels)
+    except ValueError as e:
+        logger.error(f"Error generating sequential labels: {e}")
+        raise click.ClickException(str(e))
+
+    logger.info(f"Generated {len(labels)} labels")
 
     try:
         if output_format == ".html":
@@ -208,10 +249,13 @@ def sequence(
 
         click.echo(f"Generated {len(labels)} sequential labels ({prefix}{start} to {prefix}{end})")
         click.echo(f"Output saved to: {output_path}")
+        logger.info(f"Successfully generated {len(labels)} sequential labels")
 
     except ImportError as e:
+        logger.error(f"Missing dependency: {e}")
         raise click.ClickException(str(e))
     except Exception as e:
+        logger.exception(f"Error generating output")
         raise click.ClickException(f"Error generating output: {e}")
 
 
