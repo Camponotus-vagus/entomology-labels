@@ -6,10 +6,12 @@ Handles the generation of entomology labels with configurable dimensions and lay
 
 import logging
 import math
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass
 from typing import List, Optional
 
 from .config import (
+    FONT_FAMILY_PATTERN,
     FONT_SIZE_PT_MAX,
     FONT_SIZE_PT_MIN,
     LABEL_HEIGHT_MM_MAX,
@@ -138,6 +140,12 @@ class LabelConfig:
             raise ValueError(
                 f"margin_right_mm must be between {MARGIN_MM_MIN} and "
                 f"{MARGIN_MM_MAX}, got {self.margin_right_mm}"
+            )
+        if not re.match(FONT_FAMILY_PATTERN, self.font_family):
+            raise ValueError(
+                f"font_family must match {FONT_FAMILY_PATTERN} "
+                f"(letters, digits, spaces, underscores and hyphens), "
+                f"got '{self.font_family}'"
             )
         if self.orientation.lower() not in ("landscape", "portrait"):
             raise ValueError(

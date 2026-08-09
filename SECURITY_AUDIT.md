@@ -4,6 +4,13 @@
 
 This document provides a comprehensive security audit and improvement recommendations for the **Entomology Labels Generator** application. The codebase was analyzed for security vulnerabilities, code quality issues, and best practice violations.
 
+> **How to read this document.** Everything below is the original *analysis and
+> proposed* fixes. It is not a description of the shipped code, and several
+> recommendations were adopted only in part or not at all — most importantly
+> item #1, whose directory confinement was **not** implemented (see the
+> implementation note under that item). Check the source before relying on any
+> control described here.
+
 **Risk Summary:**
 - 🔴 **High Risk**: 2 vulnerabilities
 - 🟡 **Medium Risk**: 5 vulnerabilities  
@@ -80,6 +87,23 @@ def load_data(file_path: Union[str, Path]) -> List[Label]:
 ```
 
 **Priority:** Immediate fix required before production deployment.
+
+**Implementation note (not implemented):**
+
+The directory confinement above was deliberately **not** adopted. This is a
+desktop tool: the user chooses their own input file through a shell or a file
+dialog, and files legitimately live outside the working directory. Confining
+reads to the cwd would break normal use while protecting nothing — the process
+already runs with the user's own permissions, so it grants no access the user
+does not already have. The `'..'` string check is also not implemented; it
+rejects harmless relative paths while an absolute path bypasses it entirely.
+
+What `input_handlers._validate_file_path` actually does: resolve the path, and
+reject it if it does not exist, is not a regular file, exceeds
+`MAX_FILE_SIZE_BYTES`, or is not readable. Treat that as the real contract. If
+this code is ever embedded somewhere it processes untrusted, attacker-chosen
+paths (a web service, a shared runner), confinement must be added at that
+boundary.
 
 ---
 

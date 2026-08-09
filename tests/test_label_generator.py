@@ -189,7 +189,7 @@ class TestLabelGenerator:
         assert len(labels) == 5
         assert labels[0].code == "M1"
         assert labels[4].code == "M5"
-        assert all(l.location_line1 == "Italia" for l in labels)
+        assert all(lbl.location_line1 == "Italia" for lbl in labels)
 
     def test_inverted_range_raises(self):
         """An end number below the start number is rejected, not silently empty."""

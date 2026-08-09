@@ -4,13 +4,15 @@ Graphical User Interface for Entomology Labels Generator.
 Provides an easy-to-use interface for creating and exporting entomology labels.
 """
 
-import json
 import logging
+import math
+import queue
 import tempfile
+import threading
 import tkinter as tk
 import webbrowser
 from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
 from .config import (
@@ -24,12 +26,37 @@ from .config import (
     MARGIN_MM_MIN,
     MAX_DISPLAYED_LABELS,
     MAX_LABELS_PER_GENERATOR,
+    PREVIEW_SCALE_FACTOR,
 )
 from .input_handlers import load_data
 from .label_generator import Label, LabelConfig, LabelGenerator
 from .output_generators import generate_docx, generate_html, generate_pdf
 
 logger = logging.getLogger(__name__)
+
+# How often the main loop checks whether a background job has finished
+BACKGROUND_POLL_MS = 50
+
+
+def _bind_mousewheel(widget, canvas) -> None:
+    """Scroll `canvas` when the wheel is used over `widget`.
+
+    Bound per widget rather than with bind_all so each scrollable area only
+    responds to the wheel while the pointer is actually over it.
+    """
+
+    def _on_wheel(event):
+        if event.num == 4:  # X11 wheel up
+            delta = -1
+        elif event.num == 5:  # X11 wheel down
+            delta = 1
+        else:
+            delta = int(-1 * (event.delta / 120))
+        canvas.yview_scroll(delta, "units")
+        return "break"
+
+    for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+        widget.bind(sequence, _on_wheel)
 
 
 class EntomologyLabelsGUI:
@@ -46,6 +73,12 @@ class EntomologyLabelsGUI:
 
         # Index of the label currently loaded in the form for editing, if any
         self._editing_index: Optional[int] = None
+
+        # Current page of the label list
+        self._tree_page = 0
+
+        # Set while a background import or export is running
+        self._busy = False
 
         # Setup UI
         self._setup_menu()
@@ -217,6 +250,18 @@ class EntomologyLabelsGUI:
             tree_btn_frame, text="Duplicate Selected", command=self._duplicate_selected_label
         ).pack(side=tk.LEFT, padx=2)
 
+        # Paging controls, so every label stays reachable however many there are
+        self.tree_next_button = ttk.Button(
+            tree_btn_frame, text="Next >", command=lambda: self._change_tree_page(1)
+        )
+        self.tree_next_button.pack(side=tk.RIGHT, padx=2)
+        self.tree_page_label = ttk.Label(tree_btn_frame, text="No labels")
+        self.tree_page_label.pack(side=tk.RIGHT, padx=8)
+        self.tree_prev_button = ttk.Button(
+            tree_btn_frame, text="< Prev", command=lambda: self._change_tree_page(-1)
+        )
+        self.tree_prev_button.pack(side=tk.RIGHT, padx=2)
+
     def _setup_preview_tab(self):
         """Setup the visual preview tab."""
         preview_frame = ttk.Frame(self.notebook, padding="10")
@@ -278,6 +323,9 @@ class EntomologyLabelsGUI:
         self.paper_frame = tk.Frame(self.preview_canvas, bg="white")
         self.preview_canvas.create_window((10, 10), window=self.paper_frame, anchor="nw")
 
+        _bind_mousewheel(self.preview_canvas, self.preview_canvas)
+        _bind_mousewheel(self.paper_frame, self.preview_canvas)
+
     def _setup_config_tab(self):
         """Setup the configuration tab."""
         container = ttk.Frame(self.notebook)
@@ -297,14 +345,11 @@ class EntomologyLabelsGUI:
         config_canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Handle mouse wheel scrolling
-        def _on_mousewheel(event):
-            config_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        config_canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        # Note: we need to pack scrollbar somewhere, but notebook makes it tricky.
-        # Let's use a simpler layout for now if scroll isn't strictly needed,
-        # but let's stick to a structured layout.
+        # Wheel scrolling is bound to the canvas and its children rather than
+        # with bind_all, which would hijack the wheel for the whole app and
+        # leave the preview canvas unscrollable.
+        _bind_mousewheel(config_canvas, config_canvas)
+        _bind_mousewheel(scrollable_frame, config_canvas)
 
         # Grouping fields
         # Layout
@@ -474,9 +519,7 @@ class EntomologyLabelsGUI:
         self._clear_form()
         self._update_status(status)
 
-        # Trigger preview update if on preview tab
-        if self.notebook.index(self.notebook.select()) == 1:
-            self._update_preview()
+        self._refresh_preview_if_visible()
 
     def _clear_form(self):
         """Clear the entry form and abandon any in-progress edit."""
@@ -486,6 +529,63 @@ class EntomologyLabelsGUI:
                 var.set("1")
             else:
                 var.set("")
+
+    def _run_in_background(self, work, on_success, on_error, status: str) -> None:
+        """Run `work` off the Tk main loop and deliver the result back on it.
+
+        Loading a large file and rendering a PDF both take long enough to
+        freeze the window if they run inline. The worker hands its result over
+        through a queue that the main thread polls, so no Tk call is ever made
+        from another thread.
+
+        Args:
+            work: Callable executed on the worker thread
+            on_success: Called on the main thread with the work's return value
+            on_error: Called on the main thread with the raised exception
+            status: Message shown in the status bar while running
+        """
+        if self._busy:
+            messagebox.showinfo("Please wait", "Another operation is still running.")
+            return
+
+        self._busy = True
+        self._update_status(status)
+        self.root.config(cursor="watch")
+
+        results: "queue.Queue" = queue.Queue(maxsize=1)
+
+        def runner():
+            try:
+                results.put(("ok", work()))
+            except Exception as exc:  # reported via on_error on the main thread
+                results.put(("error", exc))
+
+        threading.Thread(target=runner, daemon=True).start()
+        self._poll_background(results, on_success, on_error)
+
+    def _poll_background(self, results, on_success, on_error) -> None:
+        """Check for a finished background job, rescheduling until it lands."""
+        try:
+            outcome, payload = results.get_nowait()
+        except queue.Empty:
+            self.root.after(
+                BACKGROUND_POLL_MS,
+                lambda: self._poll_background(results, on_success, on_error),
+            )
+            return
+
+        self._busy = False
+        self.root.config(cursor="")
+
+        if outcome == "ok":
+            on_success(payload)
+        else:
+            on_error(payload)
+
+    def _refresh_preview_if_visible(self) -> None:
+        """Re-render the preview when its tab is the one on screen."""
+        if self.notebook.index(self.notebook.select()) == 1:
+            self._update_preview()
 
     def _import_data(self):
         """Import data from a file."""
@@ -504,41 +604,67 @@ class EntomologyLabelsGUI:
         if not file_path:
             return
 
-        try:
-            logger.info(f"Importing data from: {file_path}")
-            labels = load_data(file_path)
+        logger.info(f"Importing data from: {file_path}")
 
-            # The add_labels method already checks the limit, so this will raise ValueError if exceeded
-            self.generator.add_labels(labels)
+        def on_success(labels):
+            # add_labels enforces the maximum, so this can still raise
+            try:
+                self.generator.add_labels(labels)
+            except ValueError as e:
+                messagebox.showerror("Import Error", f"Failed to import data:\n{e}")
+                return
             self._update_labels_tree()
             logger.info(f"Successfully imported {len(labels)} labels")
             self._update_status(f"Imported {len(labels)} labels from {Path(file_path).name}")
-
-            # Switch to data tab and update
             self.notebook.select(0)
+            self._refresh_preview_if_visible()
 
-        except ValueError as e:
-            logger.error(f"Validation error during import: {e}")
-            messagebox.showerror("Import Error", f"Failed to import data:\n{str(e)}")
-        except Exception as e:
-            logger.error(f"Failed to import data: {e}", exc_info=True)
-            messagebox.showerror("Import Error", f"Failed to import data:\n{str(e)}")
+        def on_error(exc):
+            logger.error(f"Failed to import data: {exc}", exc_info=exc)
+            messagebox.showerror("Import Error", f"Failed to import data:\n{exc}")
+
+        self._run_in_background(
+            lambda: load_data(file_path),
+            on_success,
+            on_error,
+            status=f"Importing {Path(file_path).name}...",
+        )
+
+    @property
+    def _tree_page_count(self) -> int:
+        """Number of pages the label list is split into."""
+        total = self.generator.total_labels
+        return max(1, math.ceil(total / MAX_DISPLAYED_LABELS))
+
+    def _change_tree_page(self, delta: int) -> None:
+        """Move the label list one page forward or back."""
+        new_page = self._tree_page + delta
+        if 0 <= new_page < self._tree_page_count:
+            self._tree_page = new_page
+            self._update_labels_tree()
 
     def _update_labels_tree(self):
-        """Update the labels treeview."""
+        """Update the labels treeview.
+
+        Only one page of MAX_DISPLAYED_LABELS rows is inserted at a time, which
+        keeps the widget responsive while still letting every label be selected
+        and edited — the previous version collapsed everything past the first
+        500 into a single unselectable row.
+        """
         # Clear existing items
         for item in self.labels_tree.get_children():
             self.labels_tree.delete(item)
 
-        # Add labels, grouped for display
-        # We'll just show the actual labels for now as they are in the generator
-        # To make it more readable, we could group identical labels, but let's keep it simple
-        for i, label in enumerate(self.generator.labels):
-            # Only show the first MAX_DISPLAYED_LABELS to prevent GUI lag
-            if i >= MAX_DISPLAYED_LABELS:
-                self.labels_tree.insert("", tk.END, values=("...", "... and more ...", "", "", ""))
-                break
+        # Clamp the page in case labels were removed since the last refresh
+        self._tree_page = max(0, min(self._tree_page, self._tree_page_count - 1))
 
+        start = self._tree_page * MAX_DISPLAYED_LABELS
+        end = min(start + MAX_DISPLAYED_LABELS, self.generator.total_labels)
+
+        # The row id is the label's index in the generator, so selection-based
+        # actions address the right label on any page.
+        for i in range(start, end):
+            label = self.generator.labels[i]
             self.labels_tree.insert(
                 "",
                 tk.END,
@@ -551,6 +677,19 @@ class EntomologyLabelsGUI:
                     "1",
                 ),
             )
+
+        # Update paging controls
+        page_count = self._tree_page_count
+        if self.generator.total_labels:
+            self.tree_page_label.config(
+                text=f"Showing {start + 1}-{end} of {self.generator.total_labels}"
+            )
+        else:
+            self.tree_page_label.config(text="No labels")
+        self.tree_prev_button.config(state=tk.NORMAL if self._tree_page > 0 else tk.DISABLED)
+        self.tree_next_button.config(
+            state=tk.NORMAL if self._tree_page < page_count - 1 else tk.DISABLED
+        )
 
         # Update count
         self.labels_count_label.config(
@@ -579,6 +718,7 @@ class EntomologyLabelsGUI:
 
         self._update_labels_tree()
         self._update_status(f"Removed {len(indices)} label(s)")
+        self._refresh_preview_if_visible()
 
     def _duplicate_selected_label(self):
         """Duplicate the selected labels."""
@@ -604,6 +744,7 @@ class EntomologyLabelsGUI:
         self.generator.add_labels(new_labels)
         self._update_labels_tree()
         self._update_status(f"Duplicated {len(new_labels)} label(s)")
+        self._refresh_preview_if_visible()
 
     def _edit_selected_label(self):
         """Edit the selected label."""
@@ -746,9 +887,8 @@ class EntomologyLabelsGUI:
         # Display as a grid in the paper_frame
         config = self.generator.config
 
-        # We'll use a scale for the preview so it fits on screen
-        # 1mm = ~3 pixels for preview
-        scale = 3.5
+        # Scale the preview so a page fits on screen
+        scale = PREVIEW_SCALE_FACTOR
 
         self.paper_frame.config(
             width=config.page_width_mm * scale, height=config.page_height_mm * scale, bg="white"
@@ -865,14 +1005,13 @@ class EntomologyLabelsGUI:
         if not file_path:
             return
 
-        try:
-            if format_type == "html":
-                generate_html(self.generator, file_path)
-            elif format_type == "pdf":
-                generate_pdf(self.generator, file_path)
-            elif format_type == "docx":
-                generate_docx(self.generator, file_path)
+        generators = {
+            "html": generate_html,
+            "pdf": generate_pdf,
+            "docx": generate_docx,
+        }
 
+        def on_success(_result):
             self._update_status(f"Exported to {Path(file_path).name}")
             logger.info(f"Successfully exported to {file_path}")
 
@@ -882,12 +1021,21 @@ class EntomologyLabelsGUI:
                 # Safely open the file in browser/default app
                 webbrowser.open(Path(file_path).resolve().as_uri())
 
-        except ImportError as e:
-            logger.error(f"Missing dependency for export: {e}")
-            messagebox.showerror("Missing Dependency", str(e))
-        except Exception as e:
-            logger.exception(f"Export failed")
-            messagebox.showerror("Export Error", f"Failed to export:\n{str(e)}")
+        def on_error(exc):
+            if isinstance(exc, ImportError):
+                logger.error(f"Missing dependency for export: {exc}")
+                messagebox.showerror("Missing Dependency", str(exc))
+            else:
+                logger.error(f"Export failed: {exc}", exc_info=exc)
+                messagebox.showerror("Export Error", f"Failed to export:\n{exc}")
+            self._update_status("Export failed")
+
+        self._run_in_background(
+            lambda: generators[format_type](self.generator, file_path),
+            on_success,
+            on_error,
+            status=f"Exporting {format_type.upper()}...",
+        )
 
     def _show_sequential_dialog(self):
         """Show dialog for generating sequential labels."""

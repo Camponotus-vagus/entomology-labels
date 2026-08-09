@@ -24,6 +24,9 @@ MARGIN_MM_MIN = 0.0
 MARGIN_MM_MAX = 50.0
 DPI_MIN = 72
 DPI_MAX = 1200
+# font_family is interpolated into a CSS declaration in the generated HTML, so
+# it is restricted to characters that cannot terminate the declaration.
+FONT_FAMILY_PATTERN = r"^[A-Za-z0-9 _-]+$"
 PREVIEW_SCALE_FACTOR = 3.5
 
 # File Paths

@@ -5,8 +5,8 @@ Provides commands for generating labels from various input formats.
 """
 
 import logging
+import os
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -18,6 +18,76 @@ from .output_generators import generate_docx, generate_html, generate_pdf
 # Setup logging
 logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
 logger = logging.getLogger(__name__)
+
+SUPPORTED_OUTPUT_FORMATS = [".html", ".pdf", ".docx"]
+
+
+def _validate_output_path(output: str) -> Path:
+    """Resolve the output path and check it can be written to.
+
+    Checked up front so an unwritable destination is reported before the input
+    file is parsed and every label rendered, rather than after.
+
+    Args:
+        output: Output path as given on the command line
+
+    Returns:
+        Resolved output Path
+
+    Raises:
+        click.ClickException: If the format is unsupported or the destination
+            is not writable
+    """
+    output_path = Path(output).resolve()
+
+    if output_path.suffix.lower() not in SUPPORTED_OUTPUT_FORMATS:
+        raise click.ClickException(
+            f"Unsupported output format: {output_path.suffix}. "
+            f"Use {', '.join(SUPPORTED_OUTPUT_FORMATS)}"
+        )
+
+    if output_path.is_dir():
+        raise click.ClickException(f"Output path is a directory: {output_path}")
+
+    # The generators create missing directories, so check the closest
+    # existing ancestor is the one that has to be writable.
+    ancestor = output_path.parent
+    while not ancestor.exists() and ancestor != ancestor.parent:
+        ancestor = ancestor.parent
+
+    if not os.access(ancestor, os.W_OK):
+        raise click.ClickException(f"Cannot write to output directory: {ancestor}")
+
+    return output_path
+
+
+def _write_output(generator, output_path: Path, open_after: bool) -> None:
+    """Render the generator to the format implied by the output suffix.
+
+    Args:
+        generator: LabelGenerator holding the labels to render
+        output_path: Destination file, already validated
+        open_after: Whether to open the result when it is written
+
+    Raises:
+        click.ClickException: If a needed dependency is missing or the write fails
+    """
+    output_format = output_path.suffix.lower()
+    logger.info(f"Generating {output_format[1:].upper()} output")
+
+    try:
+        if output_format == ".html":
+            generate_html(generator, output_path, open_in_browser=open_after)
+        elif output_format == ".pdf":
+            generate_pdf(generator, output_path, open_after=open_after)
+        elif output_format == ".docx":
+            generate_docx(generator, output_path, open_after=open_after)
+    except ImportError as e:
+        logger.error(f"Missing dependency: {e}")
+        raise click.ClickException(str(e))
+    except Exception as e:
+        logger.exception("Error generating output")
+        raise click.ClickException(f"Error generating output: {e}")
 
 
 @click.group()
@@ -91,17 +161,10 @@ def generate(
         logging.getLogger().setLevel(logging.DEBUG)
 
     input_path = Path(input_file).resolve()
-    output_path = Path(output).resolve()
+    output_path = _validate_output_path(output)
 
     logger.info(f"Processing input file: {input_path}")
     logger.info(f"Output file: {output_path}")
-
-    # Determine output format
-    output_format = output_path.suffix.lower()
-    if output_format not in [".html", ".pdf", ".docx"]:
-        raise click.ClickException(
-            f"Unsupported output format: {output_format}. " "Use .html, .pdf, or .docx"
-        )
 
     if verbose:
         click.echo(f"Loading data from: {input_path}")
@@ -109,14 +172,14 @@ def generate(
     # Load data
     try:
         labels = load_data(input_path)
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         logger.error(f"File not found: {input_path}")
         raise click.ClickException(f"Input file not found: {input_path}")
     except ValueError as e:
         logger.error(f"Invalid input: {e}")
         raise click.ClickException(f"Invalid input: {e}")
     except Exception as e:
-        logger.exception(f"Unexpected error loading data")
+        logger.exception("Unexpected error loading data")
         raise click.ClickException(f"Error loading data: {e}")
 
     if not labels:
@@ -150,29 +213,14 @@ def generate(
         click.echo(f"Configuration: {rows}x{cols} labels per page")
         click.echo(f"Total pages: {generator.total_pages}")
 
-    logger.info(f"Generating {output_format[1:].upper()} output")
+    _write_output(generator, output_path, open_after)
 
-    # Generate output
-    try:
-        if output_format == ".html":
-            generate_html(generator, output_path, open_in_browser=open_after)
-        elif output_format == ".pdf":
-            generate_pdf(generator, output_path, open_after=open_after)
-        elif output_format == ".docx":
-            generate_docx(generator, output_path, open_after=open_after)
-
-        click.echo(f"Generated {generator.total_labels} labels on {generator.total_pages} pages")
-        click.echo(f"Output saved to: {output_path}")
-        logger.info(
-            f"Successfully generated {generator.total_labels} labels on {generator.total_pages} pages"
-        )
-
-    except ImportError as e:
-        logger.error(f"Missing dependency: {e}")
-        raise click.ClickException(str(e))
-    except Exception as e:
-        logger.exception(f"Error generating output")
-        raise click.ClickException(f"Error generating output: {e}")
+    click.echo(f"Generated {generator.total_labels} labels on {generator.total_pages} pages")
+    click.echo(f"Output saved to: {output_path}")
+    logger.info(
+        f"Successfully generated {generator.total_labels} labels "
+        f"on {generator.total_pages} pages"
+    )
 
 
 @cli.command()
@@ -209,13 +257,7 @@ def sequence(
         --date "15.vi.2024" \\
         -o labels.html
     """
-    output_path = Path(output).resolve()
-    output_format = output_path.suffix.lower()
-
-    if output_format not in [".html", ".pdf", ".docx"]:
-        raise click.ClickException(
-            f"Unsupported output format: {output_format}. " "Use .html, .pdf, or .docx"
-        )
+    output_path = _validate_output_path(output)
 
     logger.info(f"Generating sequential labels: {prefix}{start} to {prefix}{end}")
 
@@ -242,24 +284,11 @@ def sequence(
 
     logger.info(f"Generated {len(labels)} labels")
 
-    try:
-        if output_format == ".html":
-            generate_html(generator, output_path, open_in_browser=open_after)
-        elif output_format == ".pdf":
-            generate_pdf(generator, output_path, open_after=open_after)
-        elif output_format == ".docx":
-            generate_docx(generator, output_path, open_after=open_after)
+    _write_output(generator, output_path, open_after)
 
-        click.echo(f"Generated {len(labels)} sequential labels ({prefix}{start} to {prefix}{end})")
-        click.echo(f"Output saved to: {output_path}")
-        logger.info(f"Successfully generated {len(labels)} sequential labels")
-
-    except ImportError as e:
-        logger.error(f"Missing dependency: {e}")
-        raise click.ClickException(str(e))
-    except Exception as e:
-        logger.exception(f"Error generating output")
-        raise click.ClickException(f"Error generating output: {e}")
+    click.echo(f"Generated {len(labels)} sequential labels ({prefix}{start} to {prefix}{end})")
+    click.echo(f"Output saved to: {output_path}")
+    logger.info(f"Successfully generated {len(labels)} sequential labels")
 
 
 @cli.command()

@@ -17,7 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_file_path(file_path: Union[str, Path]) -> Path:
-    """Validate file path for security and existence.
+    """Check that a path points at a readable file of a workable size.
+
+    This is a usability and resource guard, not a sandbox: the path is
+    resolved and accepted wherever it points, which is the correct behaviour
+    for a desktop tool whose user picks their own files. It is deliberately
+    not confined to a directory and does not reject '..' — callers that need
+    confinement must enforce it themselves.
 
     Args:
         file_path: Path to validate
@@ -27,7 +33,7 @@ def _validate_file_path(file_path: Union[str, Path]) -> Path:
 
     Raises:
         FileNotFoundError: If file doesn't exist
-        ValueError: If path traversal detected or file too large
+        ValueError: If the path is not a file or the file is too large
         PermissionError: If file is not readable
     """
     path = Path(file_path).resolve()
@@ -194,12 +200,12 @@ def load_csv(file_path: Path) -> List[Label]:
     except ImportError:
         raise ImportError("pandas is required for CSV support. " "Install with: pip install pandas")
 
-    # Try comma first, then semicolon
-    try:
-        df = pd.read_csv(file_path, delimiter=",")
-        if len(df.columns) == 1:
-            df = pd.read_csv(file_path, delimiter=";")
-    except Exception:
+    # Parse as comma-separated, and only retry with semicolons when that
+    # succeeds but collapses into a single column. A genuine parse error is
+    # left to propagate, so the reported message describes the real problem
+    # rather than a second failure on the wrong delimiter.
+    df = pd.read_csv(file_path, delimiter=",")
+    if len(df.columns) == 1:
         df = pd.read_csv(file_path, delimiter=";")
 
     return _dataframe_to_labels(df)
@@ -228,7 +234,7 @@ def load_txt(file_path: Path) -> List[Label]:
     lines = content.strip().split("\n")
 
     # Detect format
-    if "\t" in lines[0] and not ":" in lines[0]:
+    if "\t" in lines[0] and ":" not in lines[0]:
         # TSV format
         try:
             import pandas as pd
@@ -349,6 +355,8 @@ def load_docx(file_path: Path) -> List[Label]:
 
     # Try table format first
     for table in doc.tables:
+        if not table.rows:
+            continue
         headers = [cell.text.strip().lower() for cell in table.rows[0].cells]
 
         for row in table.rows[1:]:
@@ -503,10 +511,12 @@ def _dataframe_to_labels(df) -> List[Label]:
             col = find_column(possibilities)
             if col and col in row:
                 value = row[col]
-                # Handle NaN values
-                if hasattr(value, "__float__") and str(value) == "nan":
-                    value = ""
-                data[field] = str(value) if value else ""
+                # Only missing values become empty. Testing truthiness here
+                # would also discard a legitimate 0 (a specimen coded "0").
+                if value is None or (hasattr(value, "__float__") and str(value) == "nan"):
+                    data[field] = ""
+                else:
+                    data[field] = str(value)
 
         label = Label(
             location_line1=data.get("location_line1", ""),

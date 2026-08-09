@@ -85,6 +85,46 @@ class TestParseCount:
             _parse_count(MAX_COPIES_PER_ENTRY + 1)
 
 
+class TestLoaderEdgeCases:
+    """Edge cases that used to abort a whole file."""
+
+    def test_empty_docx_table_is_skipped(self, tmp_path):
+        docx = pytest.importorskip("docx")
+
+        path = tmp_path / "labels.docx"
+        doc = docx.Document()
+        doc.add_table(rows=0, cols=3)  # a table shell with no header row
+        doc.add_paragraph("Italia")
+        doc.add_paragraph("Milano")
+        doc.add_paragraph("N1")
+        doc.save(path)
+
+        labels = load_data(path)
+        assert any(label.code == "N1" for label in labels)
+
+    def test_zero_is_not_treated_as_missing(self, tmp_path):
+        pytest.importorskip("pandas")
+
+        path = tmp_path / "labels.csv"
+        path.write_text("location_line1,code,date\nItalia,0,2024\n", encoding="utf-8")
+
+        labels = load_data(path)
+        assert len(labels) == 1
+        assert labels[0].code == "0"
+
+    def test_malformed_csv_reports_its_own_error(self, tmp_path):
+        pytest.importorskip("pandas")
+        import pandas as pd
+
+        path = tmp_path / "broken.csv"
+        path.write_text('location_line1,code\n"Italia,N1\n', encoding="utf-8")
+
+        # The comma-parse failure is the real one, and it must not be masked
+        # by a second attempt with a different delimiter.
+        with pytest.raises(pd.errors.ParserError):
+            load_data(path)
+
+
 class TestCountExpansion:
     """The copy count is bounded before any large list is materialised."""
 
