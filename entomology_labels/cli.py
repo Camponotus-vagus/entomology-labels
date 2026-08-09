@@ -89,7 +89,7 @@ def generate(
     """
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    
+
     input_path = Path(input_file).resolve()
     output_path = Path(output).resolve()
 
@@ -163,7 +163,9 @@ def generate(
 
         click.echo(f"Generated {generator.total_labels} labels on {generator.total_pages} pages")
         click.echo(f"Output saved to: {output_path}")
-        logger.info(f"Successfully generated {generator.total_labels} labels on {generator.total_pages} pages")
+        logger.info(
+            f"Successfully generated {generator.total_labels} labels on {generator.total_pages} pages"
+        )
 
     except ImportError as e:
         logger.error(f"Missing dependency: {e}")
@@ -221,7 +223,7 @@ def sequence(
         config = LabelConfig(labels_per_row=rows, labels_per_column=cols)
     except ValueError as e:
         raise click.ClickException(f"Invalid configuration: {e}")
-    
+
     generator = LabelGenerator(config)
 
     try:

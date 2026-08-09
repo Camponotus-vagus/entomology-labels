@@ -14,16 +14,16 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Optional
 
 from .config import (
+    FONT_SIZE_PT_MAX,
+    FONT_SIZE_PT_MIN,
+    LABEL_HEIGHT_MM_MAX,
+    LABEL_HEIGHT_MM_MIN,
+    LABEL_WIDTH_MM_MAX,
+    LABEL_WIDTH_MM_MIN,
+    MARGIN_MM_MAX,
+    MARGIN_MM_MIN,
     MAX_DISPLAYED_LABELS,
     MAX_LABELS_PER_GENERATOR,
-    LABEL_WIDTH_MM_MIN,
-    LABEL_WIDTH_MM_MAX,
-    LABEL_HEIGHT_MM_MIN,
-    LABEL_HEIGHT_MM_MAX,
-    FONT_SIZE_PT_MIN,
-    FONT_SIZE_PT_MAX,
-    MARGIN_MM_MIN,
-    MARGIN_MM_MAX,
 )
 from .input_handlers import load_data
 from .label_generator import Label, LabelConfig, LabelGenerator
@@ -507,7 +507,7 @@ class EntomologyLabelsGUI:
         try:
             logger.info(f"Importing data from: {file_path}")
             labels = load_data(file_path)
-            
+
             # The add_labels method already checks the limit, so this will raise ValueError if exceeded
             self.generator.add_labels(labels)
             self._update_labels_tree()
@@ -664,7 +664,9 @@ class EntomologyLabelsGUI:
                 labels_per_row=get_int("labels_per_row", 1, 50),
                 labels_per_column=get_int("labels_per_column", 1, 50),
                 label_width_mm=get_float("label_width_mm", LABEL_WIDTH_MM_MIN, LABEL_WIDTH_MM_MAX),
-                label_height_mm=get_float("label_height_mm", LABEL_HEIGHT_MM_MIN, LABEL_HEIGHT_MM_MAX),
+                label_height_mm=get_float(
+                    "label_height_mm", LABEL_HEIGHT_MM_MIN, LABEL_HEIGHT_MM_MAX
+                ),
                 page_width_mm=get_float("page_width_mm", 10.0, 500.0),
                 page_height_mm=get_float("page_height_mm", 10.0, 500.0),
                 margin_top_mm=get_float("margin_top_mm", MARGIN_MM_MIN, MARGIN_MM_MAX),

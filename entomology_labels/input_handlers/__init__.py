@@ -18,28 +18,28 @@ logger = logging.getLogger(__name__)
 
 def _validate_file_path(file_path: Union[str, Path]) -> Path:
     """Validate file path for security and existence.
-    
+
     Args:
         file_path: Path to validate
-        
+
     Returns:
         Resolved Path object
-        
+
     Raises:
         FileNotFoundError: If file doesn't exist
         ValueError: If path traversal detected or file too large
         PermissionError: If file is not readable
     """
     path = Path(file_path).resolve()
-    
+
     # Check if file exists
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
-    
+
     # Check if it's actually a file (not directory)
     if not path.is_file():
         raise ValueError(f"Not a file: {file_path}")
-    
+
     # Check file size to prevent DoS
     try:
         file_size = path.stat().st_size
@@ -50,7 +50,7 @@ def _validate_file_path(file_path: Union[str, Path]) -> Path:
             )
     except OSError as e:
         raise ValueError(f"Cannot access file: {e}")
-    
+
     # Check read permissions
     if not os.access(path, os.R_OK):
         raise PermissionError(f"No read permission: {file_path}")
@@ -97,21 +97,18 @@ def _parse_count(value, default: int = 1) -> int:
 
 def _sanitize_string(value: str) -> str:
     """Sanitize string input by removing dangerous characters.
-    
+
     Args:
         value: Input string to sanitize
-        
+
     Returns:
         Sanitized string with null bytes and control characters removed
     """
     if not value:
         return ""
-    
+
     # Remove null bytes and control characters except newlines, tabs, carriage returns
-    return ''.join(
-        c for c in str(value) 
-        if c in '\n\r\t' or (ord(c) >= 32 and ord(c) != 127)
-    )
+    return "".join(c for c in str(value) if c in "\n\r\t" or (ord(c) >= 32 and ord(c) != 127))
 
 
 def load_data(file_path: Union[str, Path]) -> List[Label]:

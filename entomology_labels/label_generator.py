@@ -10,20 +10,20 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from .config import (
+    FONT_SIZE_PT_MAX,
+    FONT_SIZE_PT_MIN,
+    LABEL_HEIGHT_MM_MAX,
+    LABEL_HEIGHT_MM_MIN,
+    LABEL_WIDTH_MM_MAX,
+    LABEL_WIDTH_MM_MIN,
+    LABELS_PER_COLUMN_MAX,
+    LABELS_PER_COLUMN_MIN,
+    LABELS_PER_ROW_MAX,
+    LABELS_PER_ROW_MIN,
+    MARGIN_MM_MAX,
+    MARGIN_MM_MIN,
     MAX_LABELS_PER_GENERATOR,
     MAX_SEQUENTIAL_LABELS,
-    LABELS_PER_ROW_MIN,
-    LABELS_PER_ROW_MAX,
-    LABELS_PER_COLUMN_MIN,
-    LABELS_PER_COLUMN_MAX,
-    LABEL_WIDTH_MM_MIN,
-    LABEL_WIDTH_MM_MAX,
-    LABEL_HEIGHT_MM_MIN,
-    LABEL_HEIGHT_MM_MAX,
-    FONT_SIZE_PT_MIN,
-    FONT_SIZE_PT_MAX,
-    MARGIN_MM_MIN,
-    MARGIN_MM_MAX,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,21 +31,18 @@ logger = logging.getLogger(__name__)
 
 def _sanitize_string(value: str) -> str:
     """Sanitize string input by removing dangerous characters.
-    
+
     Args:
         value: Input string to sanitize
-        
+
     Returns:
         Sanitized string with null bytes and control characters removed
     """
     if not value:
         return ""
-    
+
     # Remove null bytes and control characters except newlines, tabs, carriage returns
-    return ''.join(
-        c for c in str(value) 
-        if c in '\n\r\t' or (ord(c) >= 32 and ord(c) != 127)
-    )
+    return "".join(c for c in str(value) if c in "\n\r\t" or (ord(c) >= 32 and ord(c) != 127))
 
 
 @dataclass
@@ -93,7 +90,7 @@ class LabelConfig:
 
     def _validate(self) -> None:
         """Validate all configuration values are within safe bounds.
-        
+
         Raises:
             ValueError: If any configuration value is out of bounds
         """
@@ -142,10 +139,9 @@ class LabelConfig:
                 f"margin_right_mm must be between {MARGIN_MM_MIN} and "
                 f"{MARGIN_MM_MAX}, got {self.margin_right_mm}"
             )
-        if self.orientation.lower() not in ('landscape', 'portrait'):
+        if self.orientation.lower() not in ("landscape", "portrait"):
             raise ValueError(
-                f"orientation must be 'landscape' or 'portrait', "
-                f"got '{self.orientation}'"
+                f"orientation must be 'landscape' or 'portrait', " f"got '{self.orientation}'"
             )
 
     @property
@@ -270,7 +266,7 @@ class LabelGenerator:
 
     def add_label(self, label: Label) -> None:
         """Add a single label to the generator.
-        
+
         Raises:
             ValueError: If adding this label would exceed the maximum limit
         """
@@ -283,7 +279,7 @@ class LabelGenerator:
 
     def add_labels(self, labels: List[Label]) -> None:
         """Add multiple labels to the generator.
-        
+
         Raises:
             ValueError: If adding these labels would exceed the maximum limit
         """
@@ -391,7 +387,7 @@ class LabelGenerator:
 
         Returns:
             List of generated labels
-            
+
         Raises:
             ValueError: If the range is inverted or exceeds the limit
         """
@@ -408,9 +404,9 @@ class LabelGenerator:
                 f"Cannot generate more than {MAX_SEQUENTIAL_LABELS} sequential labels. "
                 f"Requested: {count} (from {start_number} to {end_number})"
             )
-        
+
         logger.info(f"Generating {count} sequential labels with prefix '{code_prefix}'")
-        
+
         labels = []
         for i in range(start_number, end_number + 1):
             labels.append(
