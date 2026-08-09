@@ -219,4 +219,11 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          twine upload dist/* --skip-existing || echo "PyPI upload skipped (no token or package exists)"
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "::warning::PYPI_API_TOKEN is not set - skipping PyPI upload"
+            exit 0
+          fi
+          # --skip-existing already tolerates a re-uploaded version; anything
+          # else (bad token, network, invalid metadata) must fail the job
+          # rather than be reported as a successful release.
+          twine upload dist/* --skip-existing

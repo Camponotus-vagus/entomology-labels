@@ -6,39 +6,46 @@ Supports: Excel (.xlsx, .xls), CSV, TXT, DOCX, JSON, YAML
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import List, Union
 
-from ..config import MAX_FILE_SIZE_BYTES
+from ..config import MAX_COPIES_PER_ENTRY, MAX_FILE_SIZE_BYTES
 from ..label_generator import Label
 
 logger = logging.getLogger(__name__)
 
 
 def _validate_file_path(file_path: Union[str, Path]) -> Path:
-    """Validate file path for security and existence.
-    
+    """Check that a path points at a readable file of a workable size.
+
+    This is a usability and resource guard, not a sandbox: the path is
+    resolved and accepted wherever it points, which is the correct behaviour
+    for a desktop tool whose user picks their own files. It is deliberately
+    not confined to a directory and does not reject '..' — callers that need
+    confinement must enforce it themselves.
+
     Args:
         file_path: Path to validate
-        
+
     Returns:
         Resolved Path object
-        
+
     Raises:
         FileNotFoundError: If file doesn't exist
-        ValueError: If path traversal detected or file too large
+        ValueError: If the path is not a file or the file is too large
         PermissionError: If file is not readable
     """
     path = Path(file_path).resolve()
-    
+
     # Check if file exists
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
-    
+
     # Check if it's actually a file (not directory)
     if not path.is_file():
         raise ValueError(f"Not a file: {file_path}")
-    
+
     # Check file size to prevent DoS
     try:
         file_size = path.stat().st_size
@@ -49,31 +56,65 @@ def _validate_file_path(file_path: Union[str, Path]) -> Path:
             )
     except OSError as e:
         raise ValueError(f"Cannot access file: {e}")
-    
+
     # Check read permissions
-    if not path.is_readable():
+    if not os.access(path, os.R_OK):
         raise PermissionError(f"No read permission: {file_path}")
-    
+
     return path
+
+
+def _parse_count(value, default: int = 1) -> int:
+    """Parse and bound a user-supplied copy count.
+
+    The count comes straight from an input file, so it is validated here —
+    before any list of that size is materialised — rather than relying on the
+    MAX_LABELS_PER_GENERATOR check, which only runs once the loader has
+    already built (and paid for) the full list.
+
+    Args:
+        value: Raw count value from the input file
+        default: Value to use when the count is missing
+
+    Returns:
+        Count as an int between 0 and MAX_COPIES_PER_ENTRY
+
+    Raises:
+        ValueError: If the count is not numeric, negative, or above the limit
+    """
+    if value is None or value == "":
+        return default
+
+    try:
+        count = int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid count value: {value!r} (expected a number)")
+
+    if count < 0:
+        raise ValueError(f"Count cannot be negative: {count}")
+
+    if count > MAX_COPIES_PER_ENTRY:
+        raise ValueError(
+            f"Count {count} exceeds the maximum of {MAX_COPIES_PER_ENTRY} copies per entry"
+        )
+
+    return count
 
 
 def _sanitize_string(value: str) -> str:
     """Sanitize string input by removing dangerous characters.
-    
+
     Args:
         value: Input string to sanitize
-        
+
     Returns:
         Sanitized string with null bytes and control characters removed
     """
     if not value:
         return ""
-    
+
     # Remove null bytes and control characters except newlines, tabs, carriage returns
-    return ''.join(
-        c for c in str(value) 
-        if c in '\n\r\t' or (ord(c) >= 32 and ord(c) != 127)
-    )
+    return "".join(c for c in str(value) if c in "\n\r\t" or (ord(c) >= 32 and ord(c) != 127))
 
 
 def load_data(file_path: Union[str, Path]) -> List[Label]:
@@ -159,12 +200,12 @@ def load_csv(file_path: Path) -> List[Label]:
     except ImportError:
         raise ImportError("pandas is required for CSV support. " "Install with: pip install pandas")
 
-    # Try comma first, then semicolon
-    try:
-        df = pd.read_csv(file_path, delimiter=",")
-        if len(df.columns) == 1:
-            df = pd.read_csv(file_path, delimiter=";")
-    except Exception:
+    # Parse as comma-separated, and only retry with semicolons when that
+    # succeeds but collapses into a single column. A genuine parse error is
+    # left to propagate, so the reported message describes the real problem
+    # rather than a second failure on the wrong delimiter.
+    df = pd.read_csv(file_path, delimiter=",")
+    if len(df.columns) == 1:
         df = pd.read_csv(file_path, delimiter=";")
 
     return _dataframe_to_labels(df)
@@ -193,7 +234,7 @@ def load_txt(file_path: Path) -> List[Label]:
     lines = content.strip().split("\n")
 
     # Detect format
-    if "\t" in lines[0] and not ":" in lines[0]:
+    if "\t" in lines[0] and ":" not in lines[0]:
         # TSV format
         try:
             import pandas as pd
@@ -242,7 +283,7 @@ def _parse_key_value_txt(content: str) -> List[Label]:
             )
 
             # Handle count/quantity for duplicates
-            count = int(data.get("count", data.get("quantity", data.get("quantità", 1))))
+            count = _parse_count(data.get("count", data.get("quantity", data.get("quantità", 1))))
             labels.extend(
                 [
                     Label(
@@ -314,6 +355,8 @@ def load_docx(file_path: Path) -> List[Label]:
 
     # Try table format first
     for table in doc.tables:
+        if not table.rows:
+            continue
         headers = [cell.text.strip().lower() for cell in table.rows[0].cells]
 
         for row in table.rows[1:]:
@@ -383,7 +426,7 @@ def load_json(file_path: Path) -> List[Label]:
     labels = []
     for item in items:
         label = Label.from_dict(item)
-        count = int(item.get("count", item.get("quantity", 1)))
+        count = _parse_count(item.get("count", item.get("quantity", 1)))
         labels.extend(
             [
                 Label(
@@ -423,7 +466,7 @@ def load_yaml(file_path: Path) -> List[Label]:
     labels = []
     for item in items:
         label = Label.from_dict(item)
-        count = int(item.get("count", item.get("quantity", 1)))
+        count = _parse_count(item.get("count", item.get("quantity", 1)))
         labels.extend(
             [
                 Label(
@@ -468,10 +511,12 @@ def _dataframe_to_labels(df) -> List[Label]:
             col = find_column(possibilities)
             if col and col in row:
                 value = row[col]
-                # Handle NaN values
-                if hasattr(value, "__float__") and str(value) == "nan":
-                    value = ""
-                data[field] = str(value) if value else ""
+                # Only missing values become empty. Testing truthiness here
+                # would also discard a legitimate 0 (a specimen coded "0").
+                if value is None or (hasattr(value, "__float__") and str(value) == "nan"):
+                    data[field] = ""
+                else:
+                    data[field] = str(value)
 
         label = Label(
             location_line1=data.get("location_line1", ""),
@@ -482,12 +527,7 @@ def _dataframe_to_labels(df) -> List[Label]:
         )
 
         if not label.is_empty():
-            count = 1
-            if "count" in data and data["count"]:
-                try:
-                    count = int(float(data["count"]))
-                except (ValueError, TypeError):
-                    count = 1
+            count = _parse_count(data.get("count"))
 
             labels.extend(
                 [

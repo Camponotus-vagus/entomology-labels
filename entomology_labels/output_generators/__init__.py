@@ -4,16 +4,39 @@ Output generators for various file formats.
 Supports: HTML, PDF, DOCX
 """
 
+import html as html_module
 import logging
-import tempfile
 import webbrowser
 from pathlib import Path
 from typing import Optional, Union
-from urllib.parse import quote
 
-from ..label_generator import LabelConfig, LabelGenerator
+from ..label_generator import LabelGenerator
 
 logger = logging.getLogger(__name__)
+
+
+def _prepare_output_path(output_path: Union[str, Path]) -> Path:
+    """Resolve an output path and make sure its directory exists.
+
+    Writing to a path like reports/2026/labels.html is an ordinary request;
+    without this the write fails deep inside the format library with a bare
+    FileNotFoundError after all the rendering work is already done.
+
+    Args:
+        output_path: Destination path for the generated file
+
+    Returns:
+        Resolved Path whose parent directory exists
+
+    Raises:
+        ValueError: If the parent directory cannot be created
+    """
+    path = Path(output_path).resolve()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise ValueError(f"Cannot create output directory {path.parent}: {e}")
+    return path
 
 
 def generate_html(
@@ -31,18 +54,16 @@ def generate_html(
     Returns:
         HTML content as string
     """
-    config = generator.config
     html = _generate_html_content(generator)
 
     if output_path:
-        path = Path(output_path).resolve()
+        path = _prepare_output_path(output_path)
         path.write_text(html, encoding="utf-8")
         logger.info(f"HTML file written to: {path}")
 
         if open_in_browser:
-            # Safely encode the path for URL usage
-            safe_path = quote(str(path.resolve()))
-            webbrowser.open(f"file://{safe_path}")
+            # as_uri() handles escaping and drive letters correctly on every platform
+            webbrowser.open(path.as_uri())
             logger.info(f"Opening HTML file in browser: {path}")
 
     return html
@@ -201,6 +222,13 @@ def _generate_html_content(generator: LabelGenerator) -> str:
         for row in grid:
             for label in row:
                 if label and not label.is_empty():
+                    if label.additional_info:
+                        info_html = (
+                            '<div class="additional-info">'
+                            f"{_escape_html(label.additional_info)}</div>"
+                        )
+                    else:
+                        info_html = ""
                     label_html = f"""
                     <div class="label">
                         <div class="label-content">
@@ -209,7 +237,7 @@ def _generate_html_content(generator: LabelGenerator) -> str:
                             <div class="empty-line"></div>
                             <div class="code">{_escape_html(label.code)}</div>
                             <div class="date">{_escape_html(label.date)}</div>
-                            {f'<div class="additional-info">{_escape_html(label.additional_info)}</div>' if label.additional_info else ''}
+                            {info_html}
                         </div>
                     </div>
                     """
@@ -257,14 +285,7 @@ def _escape_html(text: str) -> str:
     """Escape HTML special characters."""
     if not text:
         return ""
-    return (
-        str(text)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-        .replace("'", "&#39;")
-    )
+    return html_module.escape(str(text), quote=True)
 
 
 def generate_pdf(
@@ -283,7 +304,7 @@ def generate_pdf(
         Path to the generated PDF file
     """
     try:
-        from weasyprint import CSS, HTML
+        from weasyprint import HTML
     except ImportError:
         raise ImportError(
             "weasyprint is required for PDF generation. "
@@ -292,7 +313,7 @@ def generate_pdf(
             "See: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html"
         )
 
-    path = Path(output_path)
+    path = _prepare_output_path(output_path)
     html_content = _generate_html_content(generator)
 
     # Generate PDF
@@ -300,7 +321,7 @@ def generate_pdf(
     html.write_pdf(path)
 
     if open_after:
-        webbrowser.open(f"file://{path.absolute()}")
+        webbrowser.open(path.resolve().as_uri())
 
     return path
 
@@ -324,7 +345,6 @@ def generate_docx(
         from docx import Document
         from docx.enum.section import WD_ORIENT
         from docx.enum.table import WD_TABLE_ALIGNMENT
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
         from docx.oxml import OxmlElement
         from docx.oxml.ns import qn
         from docx.shared import Mm, Pt
@@ -334,7 +354,7 @@ def generate_docx(
         )
 
     config = generator.config
-    path = Path(output_path)
+    path = _prepare_output_path(output_path)
 
     doc = Document()
 
@@ -432,7 +452,7 @@ def generate_docx(
     doc.save(path)
 
     if open_after:
-        webbrowser.open(f"file://{path.absolute()}")
+        webbrowser.open(path.resolve().as_uri())
 
     return path
 

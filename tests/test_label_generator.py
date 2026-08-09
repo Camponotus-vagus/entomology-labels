@@ -2,6 +2,7 @@
 
 import pytest
 
+from entomology_labels.config import MAX_SEQUENTIAL_LABELS
 from entomology_labels.label_generator import Label, LabelConfig, LabelGenerator
 
 
@@ -188,4 +189,48 @@ class TestLabelGenerator:
         assert len(labels) == 5
         assert labels[0].code == "M1"
         assert labels[4].code == "M5"
-        assert all(l.location_line1 == "Italia" for l in labels)
+        assert all(lbl.location_line1 == "Italia" for lbl in labels)
+
+    def test_inverted_range_raises(self):
+        """An end number below the start number is rejected, not silently empty."""
+        generator = LabelGenerator()
+        with pytest.raises(ValueError, match="must be greater than or equal to"):
+            generator.generate_sequential_labels(
+                location_line1="Italia",
+                location_line2="Milano",
+                code_prefix="M",
+                start_number=10,
+                end_number=1,
+            )
+
+    def test_sequential_limit_enforced(self):
+        """Oversized sequences are rejected."""
+        generator = LabelGenerator()
+        with pytest.raises(ValueError, match="Cannot generate more than"):
+            generator.generate_sequential_labels(
+                location_line1="Italia",
+                location_line2="Milano",
+                code_prefix="M",
+                start_number=1,
+                end_number=MAX_SEQUENTIAL_LABELS + 2,
+            )
+
+
+class TestLabelConfigBounds:
+    """Grid dimensions are bounded centrally, for every caller."""
+
+    def test_rejects_zero_rows(self):
+        with pytest.raises(ValueError, match="labels_per_row must be between"):
+            LabelConfig(labels_per_row=0)
+
+    def test_rejects_zero_columns(self):
+        with pytest.raises(ValueError, match="labels_per_column must be between"):
+            LabelConfig(labels_per_column=0)
+
+    def test_rejects_oversized_grid(self):
+        with pytest.raises(ValueError, match="labels_per_column must be between"):
+            LabelConfig(labels_per_row=1, labels_per_column=200000)
+
+    def test_rejects_invalid_orientation(self):
+        with pytest.raises(ValueError, match="orientation must be"):
+            LabelConfig(orientation="diagonal")

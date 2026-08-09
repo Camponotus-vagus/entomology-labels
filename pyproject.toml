@@ -62,8 +62,10 @@ all = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "black>=23.0",
-    "isort>=5.0",
+    # The formatters are capped: their output changes between major releases,
+    # so an unpinned upper bound turns the lint job red without any commit.
+    "black>=23.0,<27.0",
+    "isort>=5.0,<9.0",
     "flake8>=6.0",
 ]
 

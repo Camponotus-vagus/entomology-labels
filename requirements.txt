@@ -1,15 +1,23 @@
-# Core dependencies
+# Runtime dependencies, mirroring the "all" extra in pyproject.toml.
+# pyproject.toml is the source of truth: prefer `pip install -e .[all]`.
+# This file exists for `pip install -r requirements.txt` workflows.
+
+# Core
 click>=8.0
 
-# Excel support (optional)
+# Excel support
 pandas>=1.5
 openpyxl>=3.0
 
-# Word document support (optional)
+# Word document support
 python-docx>=0.8
 
-# PDF generation (optional - requires system dependencies)
-# weasyprint>=57.0
-
-# YAML support (optional)
+# YAML support
 pyyaml>=6.0
+
+# PDF generation.
+# weasyprint additionally needs system libraries (pango, cairo, gdk-pixbuf);
+# see https://doc.courtbouillon.org/weasyprint/stable/first_steps.html
+# Without it, HTML and DOCX output still work and PDF export reports a clear
+# error telling you to install it.
+weasyprint>=57.0
