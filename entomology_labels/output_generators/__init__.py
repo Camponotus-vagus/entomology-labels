@@ -5,11 +5,9 @@ Supports: HTML, PDF, DOCX
 """
 
 import logging
-import tempfile
 import webbrowser
 from pathlib import Path
 from typing import Optional, Union
-from urllib.parse import quote
 
 from ..label_generator import LabelConfig, LabelGenerator
 
@@ -40,9 +38,8 @@ def generate_html(
         logger.info(f"HTML file written to: {path}")
 
         if open_in_browser:
-            # Safely encode the path for URL usage
-            safe_path = quote(str(path.resolve()))
-            webbrowser.open(f"file://{safe_path}")
+            # as_uri() handles escaping and drive letters correctly on every platform
+            webbrowser.open(path.as_uri())
             logger.info(f"Opening HTML file in browser: {path}")
 
     return html
@@ -300,7 +297,7 @@ def generate_pdf(
     html.write_pdf(path)
 
     if open_after:
-        webbrowser.open(f"file://{path.absolute()}")
+        webbrowser.open(path.resolve().as_uri())
 
     return path
 
@@ -432,7 +429,7 @@ def generate_docx(
     doc.save(path)
 
     if open_after:
-        webbrowser.open(f"file://{path.absolute()}")
+        webbrowser.open(path.resolve().as_uri())
 
     return path
 

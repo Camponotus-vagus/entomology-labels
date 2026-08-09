@@ -6,10 +6,11 @@ Supports: Excel (.xlsx, .xls), CSV, TXT, DOCX, JSON, YAML
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import List, Union
 
-from ..config import MAX_FILE_SIZE_BYTES
+from ..config import MAX_COPIES_PER_ENTRY, MAX_FILE_SIZE_BYTES
 from ..label_generator import Label
 
 logger = logging.getLogger(__name__)
@@ -51,10 +52,47 @@ def _validate_file_path(file_path: Union[str, Path]) -> Path:
         raise ValueError(f"Cannot access file: {e}")
     
     # Check read permissions
-    if not path.is_readable():
+    if not os.access(path, os.R_OK):
         raise PermissionError(f"No read permission: {file_path}")
-    
+
     return path
+
+
+def _parse_count(value, default: int = 1) -> int:
+    """Parse and bound a user-supplied copy count.
+
+    The count comes straight from an input file, so it is validated here —
+    before any list of that size is materialised — rather than relying on the
+    MAX_LABELS_PER_GENERATOR check, which only runs once the loader has
+    already built (and paid for) the full list.
+
+    Args:
+        value: Raw count value from the input file
+        default: Value to use when the count is missing
+
+    Returns:
+        Count as an int between 0 and MAX_COPIES_PER_ENTRY
+
+    Raises:
+        ValueError: If the count is not numeric, negative, or above the limit
+    """
+    if value is None or value == "":
+        return default
+
+    try:
+        count = int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid count value: {value!r} (expected a number)")
+
+    if count < 0:
+        raise ValueError(f"Count cannot be negative: {count}")
+
+    if count > MAX_COPIES_PER_ENTRY:
+        raise ValueError(
+            f"Count {count} exceeds the maximum of {MAX_COPIES_PER_ENTRY} copies per entry"
+        )
+
+    return count
 
 
 def _sanitize_string(value: str) -> str:
@@ -242,7 +280,7 @@ def _parse_key_value_txt(content: str) -> List[Label]:
             )
 
             # Handle count/quantity for duplicates
-            count = int(data.get("count", data.get("quantity", data.get("quantità", 1))))
+            count = _parse_count(data.get("count", data.get("quantity", data.get("quantità", 1))))
             labels.extend(
                 [
                     Label(
@@ -383,7 +421,7 @@ def load_json(file_path: Path) -> List[Label]:
     labels = []
     for item in items:
         label = Label.from_dict(item)
-        count = int(item.get("count", item.get("quantity", 1)))
+        count = _parse_count(item.get("count", item.get("quantity", 1)))
         labels.extend(
             [
                 Label(
@@ -423,7 +461,7 @@ def load_yaml(file_path: Path) -> List[Label]:
     labels = []
     for item in items:
         label = Label.from_dict(item)
-        count = int(item.get("count", item.get("quantity", 1)))
+        count = _parse_count(item.get("count", item.get("quantity", 1)))
         labels.extend(
             [
                 Label(
@@ -482,12 +520,7 @@ def _dataframe_to_labels(df) -> List[Label]:
         )
 
         if not label.is_empty():
-            count = 1
-            if "count" in data and data["count"]:
-                try:
-                    count = int(float(data["count"]))
-                except (ValueError, TypeError):
-                    count = 1
+            count = _parse_count(data.get("count"))
 
             labels.extend(
                 [

@@ -12,10 +12,10 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Optional
-from urllib.parse import quote
 
 from .config import (
     MAX_DISPLAYED_LABELS,
+    MAX_LABELS_PER_GENERATOR,
     LABEL_WIDTH_MM_MIN,
     LABEL_WIDTH_MM_MAX,
     LABEL_HEIGHT_MM_MIN,
@@ -43,6 +43,9 @@ class EntomologyLabelsGUI:
 
         # Initialize generator
         self.generator = LabelGenerator()
+
+        # Index of the label currently loaded in the form for editing, if any
+        self._editing_index: Optional[int] = None
 
         # Setup UI
         self._setup_menu()
@@ -436,27 +439,48 @@ class EntomologyLabelsGUI:
             messagebox.showwarning("Warning", "Please fill at least one field for the label.")
             return
 
-        for _ in range(quantity):
-            self.generator.add_label(
-                Label(
-                    location_line1=label.location_line1,
-                    location_line2=label.location_line2,
-                    code=label.code,
-                    date=label.date,
-                    additional_info=label.additional_info,
-                )
+        copies = [
+            Label(
+                location_line1=label.location_line1,
+                location_line2=label.location_line2,
+                code=label.code,
+                date=label.date,
+                additional_info=label.additional_info,
             )
+            for _ in range(quantity)
+        ]
+
+        editing_index = self._editing_index
+        if editing_index is not None and editing_index < len(self.generator.labels):
+            # Saving an edit: replace the original in place, keeping its position
+            if len(self.generator.labels) - 1 + quantity > MAX_LABELS_PER_GENERATOR:
+                messagebox.showerror(
+                    "Error",
+                    f"Maximum label count ({MAX_LABELS_PER_GENERATOR}) exceeded.",
+                )
+                return
+            self.generator.labels[editing_index : editing_index + 1] = copies
+            status = f"Updated label ({quantity} copy/copies)"
+        else:
+            try:
+                for copy in copies:
+                    self.generator.add_label(copy)
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+                return
+            status = f"Added {quantity} label(s)"
 
         self._update_labels_tree()
         self._clear_form()
-        self._update_status(f"Added {quantity} label(s)")
+        self._update_status(status)
 
         # Trigger preview update if on preview tab
         if self.notebook.index(self.notebook.select()) == 1:
             self._update_preview()
 
     def _clear_form(self):
-        """Clear the entry form."""
+        """Clear the entry form and abandon any in-progress edit."""
+        self._editing_index = None
         for var_name, var in self.entry_vars.items():
             if var_name == "quantity":
                 var.set("1")
@@ -510,8 +534,8 @@ class EntomologyLabelsGUI:
         # We'll just show the actual labels for now as they are in the generator
         # To make it more readable, we could group identical labels, but let's keep it simple
         for i, label in enumerate(self.generator.labels):
-            # Only show first 500 to prevent GUI lag
-            if i >= 500:
+            # Only show the first MAX_DISPLAYED_LABELS to prevent GUI lag
+            if i >= MAX_DISPLAYED_LABELS:
                 self.labels_tree.insert("", tk.END, values=("...", "... and more ...", "", "", ""))
                 break
 
@@ -549,6 +573,10 @@ class EntomologyLabelsGUI:
             if idx < len(self.generator.labels):
                 del self.generator.labels[idx]
 
+        # Removals shift positions, so any pending edit no longer refers to the
+        # label it was opened on.
+        self._editing_index = None
+
         self._update_labels_tree()
         self._update_status(f"Removed {len(indices)} label(s)")
 
@@ -580,7 +608,7 @@ class EntomologyLabelsGUI:
     def _edit_selected_label(self):
         """Edit the selected label."""
         selection = self.labels_tree.selection()
-        if not selection:
+        if not selection or not selection[0].isdigit():
             return
 
         idx = int(selection[0])
@@ -597,16 +625,17 @@ class EntomologyLabelsGUI:
         self.entry_vars["notes"].set(label.additional_info)
         self.entry_vars["quantity"].set("1")
 
-        # Remove it from the list (user will "add" it back after editing)
-        del self.generator.labels[idx]
-        self._update_labels_tree()
-        self._update_status("Editing label (restored to form)")
+        # The label stays in the list until the edit is saved, so abandoning the
+        # form (or closing the app) cannot lose it.
+        self._editing_index = idx
+        self._update_status("Editing label - press 'Add Label' to save changes")
 
     def _clear_labels(self):
         """Clear all labels."""
         if self.generator.labels:
             if messagebox.askyesno("Confirm", "Are you sure you want to remove all labels?"):
                 self.generator.clear_labels()
+                self._editing_index = None
                 self._update_labels_tree()
                 self._update_status("All labels cleared")
                 self._update_preview()
@@ -805,8 +834,7 @@ class EntomologyLabelsGUI:
             html = generate_html(self.generator)
             f.write(html)
             # Safely open the temp file in browser
-            safe_path = quote(str(Path(f.name).resolve()))
-            webbrowser.open(f"file://{safe_path}")
+            webbrowser.open(Path(f.name).resolve().as_uri())
 
     def _export(self, format_type: str):
         """Export labels to the specified format."""
@@ -850,8 +878,7 @@ class EntomologyLabelsGUI:
                 "Export Successful", f"File saved to:\n{file_path}\n\nWould you like to open it?"
             ):
                 # Safely open the file in browser/default app
-                safe_path = quote(str(Path(file_path).resolve()))
-                webbrowser.open(f"file://{safe_path}")
+                webbrowser.open(Path(file_path).resolve().as_uri())
 
         except ImportError as e:
             logger.error(f"Missing dependency for export: {e}")

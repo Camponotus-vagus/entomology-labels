@@ -7,8 +7,13 @@ MAX_LABELS_PER_GENERATOR = 100000  # Maximum labels in a single generation run
 MAX_SEQUENTIAL_LABELS = 10000  # Maximum sequential labels (end - start)
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100MB max file size
 MAX_DISPLAYED_LABELS = 500  # Maximum labels shown in GUI preview
+MAX_COPIES_PER_ENTRY = 10000  # Maximum copies a single input row may request
 
 # Validation Bounds
+LABELS_PER_ROW_MIN = 1
+LABELS_PER_ROW_MAX = 100
+LABELS_PER_COLUMN_MIN = 1
+LABELS_PER_COLUMN_MAX = 100
 LABEL_WIDTH_MM_MIN = 1.0
 LABEL_WIDTH_MM_MAX = 500.0
 LABEL_HEIGHT_MM_MIN = 1.0

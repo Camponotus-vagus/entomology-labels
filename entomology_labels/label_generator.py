@@ -12,6 +12,10 @@ from typing import List, Optional
 from .config import (
     MAX_LABELS_PER_GENERATOR,
     MAX_SEQUENTIAL_LABELS,
+    LABELS_PER_ROW_MIN,
+    LABELS_PER_ROW_MAX,
+    LABELS_PER_COLUMN_MIN,
+    LABELS_PER_COLUMN_MAX,
     LABEL_WIDTH_MM_MIN,
     LABEL_WIDTH_MM_MAX,
     LABEL_HEIGHT_MM_MIN,
@@ -20,8 +24,6 @@ from .config import (
     FONT_SIZE_PT_MAX,
     MARGIN_MM_MIN,
     MARGIN_MM_MAX,
-    DPI_MIN,
-    DPI_MAX,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,6 +97,16 @@ class LabelConfig:
         Raises:
             ValueError: If any configuration value is out of bounds
         """
+        if not (LABELS_PER_ROW_MIN <= self.labels_per_row <= LABELS_PER_ROW_MAX):
+            raise ValueError(
+                f"labels_per_row must be between {LABELS_PER_ROW_MIN} and "
+                f"{LABELS_PER_ROW_MAX}, got {self.labels_per_row}"
+            )
+        if not (LABELS_PER_COLUMN_MIN <= self.labels_per_column <= LABELS_PER_COLUMN_MAX):
+            raise ValueError(
+                f"labels_per_column must be between {LABELS_PER_COLUMN_MIN} and "
+                f"{LABELS_PER_COLUMN_MAX}, got {self.labels_per_column}"
+            )
         if not (LABEL_WIDTH_MM_MIN <= self.label_width_mm <= LABEL_WIDTH_MM_MAX):
             raise ValueError(
                 f"label_width_mm must be between {LABEL_WIDTH_MM_MIN} and "
@@ -130,9 +142,6 @@ class LabelConfig:
                 f"margin_right_mm must be between {MARGIN_MM_MIN} and "
                 f"{MARGIN_MM_MAX}, got {self.margin_right_mm}"
             )
-        if not (DPI_MIN <= self.dpi <= DPI_MAX) if hasattr(self, 'dpi') else True:
-            pass  # dpi validation handled separately if set
-        
         if self.orientation.lower() not in ('landscape', 'portrait'):
             raise ValueError(
                 f"orientation must be 'landscape' or 'portrait', "
@@ -384,8 +393,14 @@ class LabelGenerator:
             List of generated labels
             
         Raises:
-            ValueError: If the number of sequential labels exceeds the limit
+            ValueError: If the range is inverted or exceeds the limit
         """
+        if end_number < start_number:
+            raise ValueError(
+                f"end_number ({end_number}) must be greater than or equal to "
+                f"start_number ({start_number})"
+            )
+
         # Validate the range to prevent DoS
         count = end_number - start_number + 1
         if count > MAX_SEQUENTIAL_LABELS:

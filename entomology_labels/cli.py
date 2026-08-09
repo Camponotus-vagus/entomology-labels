@@ -138,6 +138,7 @@ def generate(
             page_height_mm=page_height,
             font_size_pt=font_size,
             font_family=font_family,
+            orientation="landscape" if page_width > page_height else "portrait",
         )
     except ValueError as e:
         raise click.ClickException(f"Invalid configuration: {e}")
