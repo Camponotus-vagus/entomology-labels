@@ -7,13 +7,37 @@ Provides commands for generating labels from various input formats.
 import logging
 import os
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import click
 
-from .config import LOG_FORMAT, LOG_LEVEL
+from . import __version__
+from .config import (
+    GEOCODE_CACHE_FILENAME,
+    LOG_FORMAT,
+    LOG_LEVEL,
+    TEXT_OVERFLOW_MODES,
+)
+from .config_io import resolve_config, save_config_file, user_config_path
+from .dates import normalize_date, to_roman_date, validate_date
+from .fit import check_fit
+from .geocoding import build_geocoder, suggest_for_events
 from .input_handlers import load_data
-from .label_generator import LabelConfig, LabelGenerator
+from .label_generator import Label, LabelConfig, LabelGenerator
+from .layout import KIND_LOCALITY, LABEL_KINDS, build_sheet
 from .output_generators import generate_docx, generate_html, generate_pdf
+from .photos import (
+    DEFAULT_RADIUS_M,
+    DEFAULT_TIME_GAP_MINUTES,
+    PhotoReadError,
+    _tags_to_photo,
+    event_to_site,
+    find_photos,
+    read_photo_tags,
+    scan_photos,
+)
+from .presets import DESCRIPTIONS, get_preset, labels_per_page, preset_names
+from .sites import load_site_registry, resolve_row
 
 # Setup logging
 logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
@@ -91,7 +115,7 @@ def _write_output(generator, output_path: Path, open_after: bool) -> None:
 
 
 @click.group()
-@click.version_option(version="1.0.0", prog_name="entomology-labels")
+@click.version_option(version=__version__, prog_name="entomology-labels")
 def cli():
     """Entomology Labels Generator - Create professional specimen labels.
 
@@ -112,36 +136,398 @@ def cli():
     pass
 
 
+#: Dataclass defaults, so --help text and the CLI cannot drift from LabelConfig.
+_D = LabelConfig()
+
+
+def _layout_overrides(**values: Any) -> Dict[str, Any]:
+    """Drop unset options so they do not mask a configuration file.
+
+    click cannot distinguish "the user typed the default" from "the user typed
+    nothing", so every layout option defaults to None and the unset ones are
+    removed here.
+
+    Args:
+        **values: Layout settings, any of which may be None
+
+    Returns:
+        Only the settings that were actually supplied, plus a page
+        orientation derived from the page dimensions when those were given
+    """
+    supplied = {k: v for k, v in values.items() if v is not None}
+
+    width = supplied.get("page_width_mm")
+    height = supplied.get("page_height_mm")
+    if width is not None and height is not None:
+        supplied["orientation"] = "landscape" if width > height else "portrait"
+
+    return supplied
+
+
+def _load_labels(input_path: Path) -> list:
+    """Load labels from an input file, turning failures into CLI errors.
+
+    Args:
+        input_path: Path to the input file
+
+    Returns:
+        The labels the file describes
+
+    Raises:
+        click.ClickException: If the file is missing, invalid, or empty
+    """
+    try:
+        labels = load_data(input_path)
+    except FileNotFoundError:
+        logger.error(f"File not found: {input_path}")
+        raise click.ClickException(f"Input file not found: {input_path}")
+    except ValueError as e:
+        logger.error(f"Invalid input: {e}")
+        raise click.ClickException(f"Invalid input: {e}")
+    except Exception as e:
+        logger.exception("Unexpected error loading data")
+        raise click.ClickException(f"Error loading data: {e}")
+
+    if not labels:
+        raise click.ClickException("No labels found in input file")
+
+    return labels
+
+
+def _suggest_localities(events, geocoder_name: str, geonames_user: str) -> dict:
+    """Ask an online service to propose a locality for each site.
+
+    Args:
+        events: The collection events
+        geocoder_name: Which service to ask
+        geonames_user: GeoNames username, when that service is chosen
+
+    Returns:
+        Suggestions by event id; missing entries mean no suggestion
+
+    Raises:
+        click.ClickException: If the geocoder cannot be constructed
+    """
+    try:
+        geocoder = build_geocoder(
+            geocoder_name,
+            username=geonames_user,
+            cache_path=user_config_path().parent / GEOCODE_CACHE_FILENAME,
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    click.echo(f"Asking {geocoder_name} for locality suggestions ({len(events)} lookup(s))...")
+    results = {
+        event_id: suggestion
+        for event_id, suggestion in suggest_for_events(events, geocoder)
+        if suggestion is not None
+    }
+
+    if results:
+        click.echo(geocoder.attribution)
+    else:
+        click.secho("No locality suggestions were returned.", fg="yellow")
+
+    return results
+
+
+def _validate_draft_path(output: str) -> Path:
+    """Validate the destination for a draft site registry.
+
+    Args:
+        output: Requested output path
+
+    Returns:
+        The resolved path, with its parent directory created
+
+    Raises:
+        click.ClickException: If the suffix is not a data format we can write
+    """
+    path = Path(output).resolve()
+    if path.suffix.lower() not in (".yaml", ".yml", ".json"):
+        raise click.ClickException(
+            f"Unsupported draft format: {path.suffix or '(none)'}. Use .yaml, .yml or .json"
+        )
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise click.ClickException(f"Cannot create output directory {path.parent}: {e}")
+    return path
+
+
+def _write_site_draft(
+    events,
+    output_path: Path,
+    *,
+    read: int,
+    skipped: int,
+    suggestions: Optional[dict] = None,
+) -> None:
+    """Write a draft site registry for the given collection events.
+
+    Written with yaml.safe_dump rather than string formatting: a file name
+    reaches this file, and a crafted one would otherwise be able to inject
+    YAML structure. The explanatory comments are prepended separately.
+
+    Args:
+        events: The collection events found
+        output_path: Where to write the draft
+        read: How many photographs were read
+        skipped: How many were skipped
+        suggestions: Locality proposals by event id, written as comments
+
+    Raises:
+        click.ClickException: If PyYAML is missing or the file cannot be written
+    """
+    try:
+        import yaml
+    except ImportError:
+        raise click.ClickException("PyYAML is required. Install with: pip install pyyaml")
+
+    sites = {}
+    notes = []
+    suggestions = suggestions or {}
+    for event in events:
+        sites[event.event_id] = event_to_site(event)
+
+        # A suggestion is written beside the field, not into it. The locality
+        # stays blank until a person confirms it: a wrong toponym silently
+        # inherited onto a museum label is worse than an obvious gap.
+        suggestion = suggestions.get(event.event_id)
+        if suggestion is not None:
+            notes.append(f"{event.event_id} suggested locality ({suggestion.source}):")
+            notes.append(f"    location_line1: {suggestion.location_line1!r}")
+            notes.append(f"    location_line2: {suggestion.location_line2!r}")
+
+        detail = f"{event.event_id}: {len(event.photos)} photo(s)"
+        if event.date:
+            detail += f" on {event.date:%Y-%m-%d}"
+        if event.positioned_photos:
+            detail += f", positions spread over {event.spread_m:.0f} m"
+        without_gps = len(event.photos) - len(event.positioned_photos)
+        if without_gps:
+            detail += f", {without_gps} without GPS"
+        notes.append(detail)
+
+        span = event.elevation_range_m
+        if span and span[1] - span[0] > 20:
+            notes.append(
+                f"    elevation ranged {span[0]:.0f}-{span[1]:.0f} m; the median is used. "
+                f"A wide range means either a barometric drift or a real climb."
+            )
+
+    document = {
+        "sites": sites,
+        "labels": [{"site": event_id, "code": "", "count": 1} for event_id in sites],
+    }
+
+    header = [
+        "# Draft site registry generated by 'entomology-labels photos scan'.",
+        f"# {read} photo(s) read"
+        + (f", {skipped} skipped" if skipped else "")
+        + f", grouped into {len(sites)} site(s).",
+        "#",
+    ]
+    header += [f"# {note}" for note in notes]
+    header += [
+        "#",
+        "# EXIF records where and when, not what the place is called. Fill in the",
+        "# empty locality lines, add your specimen codes, then run:",
+        f"#   entomology-labels generate {output_path.name} -o labels.html",
+        "",
+    ]
+
+    body = yaml.safe_dump(document, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    try:
+        output_path.write_text("\n".join(header) + body, encoding="utf-8")
+    except OSError as e:
+        raise click.ClickException(f"Cannot write {output_path}: {e}")
+
+
+def _apply_sites(labels: list, sites_path: Path) -> list:
+    """Resolve a tabular file's site column against an external site registry.
+
+    CSV and Excel have nowhere to put a sites block, so the registry lives in
+    its own YAML or JSON file and the table carries a `site` column.
+
+    Args:
+        labels: Labels loaded from the tabular file
+        sites_path: Path to the site registry
+
+    Returns:
+        The labels with their site's details filled in
+
+    Raises:
+        click.ClickException: If the registry cannot be read or a site is unknown
+    """
+    try:
+        sites = load_site_registry(sites_path)
+    except ValueError as e:
+        raise click.ClickException(f"Cannot read sites file: {e}")
+
+    resolved = []
+    for index, label in enumerate(labels):
+        row = {k: v for k, v in label.to_dict().items() if v}
+        try:
+            resolved.append(Label.from_dict(resolve_row(row, sites)))
+        except ValueError as e:
+            raise click.ClickException(f"row {index + 1}: {e}")
+
+    return resolved
+
+
+def _apply_dates(labels: list, *, normalize: bool = False) -> None:
+    """Warn about odd collection dates, and optionally rewrite them.
+
+    Rewriting is opt-in because the date field has always been free text:
+    plenty of real labels read "viii.2026" or "ex larva 2026", and silently
+    reformatting a file someone already prints from would be a surprise.
+
+    Args:
+        labels: The labels to inspect; modified in place when normalizing
+        normalize: Whether to rewrite recognised dates into the label form
+    """
+    reported = set()
+
+    for label in labels:
+        if not label.date:
+            continue
+
+        for warning in validate_date(label.date):
+            if warning not in reported:
+                reported.add(warning)
+                click.secho(f"warning: {warning}", err=True, fg="yellow")
+
+        if normalize:
+            label.date = normalize_date(label.date)
+
+
+def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
+    """Print any fit warnings for a generator to stderr.
+
+    Args:
+        generator: The generator about to produce output
+        strict: Whether warnings should be treated as errors
+
+    Returns:
+        True when warnings were found and strict was requested
+    """
+    warnings = check_fit(generator)
+    if not warnings:
+        return False
+
+    for warning in warnings:
+        click.secho(f"warning: {warning}", err=True, fg="yellow")
+
+    if generator.config.text_overflow == "clip":
+        click.secho(
+            "note: --text-overflow=clip discards the trimmed text; "
+            "'wrap' keeps it on another line",
+            err=True,
+        )
+
+    return strict
+
+
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("-o", "--output", required=True, help="Output file path (.html, .pdf, or .docx)")
-@click.option("--rows", default=10, type=int, help="Labels per row (default: 10)")
-@click.option("--cols", default=13, type=int, help="Labels per column (default: 13)")
-@click.option("--label-width", default=21.0, type=float, help="Label width in mm (default: 21.0)")
 @click.option(
-    "--label-height", default=22.85, type=float, help="Label height in mm (default: 22.85)"
+    "--preset",
+    type=click.Choice(preset_names()),
+    help="Named label geometry; run 'entomology-labels presets' to see them",
+)
+@click.option("--config", "config_path", type=click.Path(), help="Layout configuration file")
+@click.option(
+    "--sites",
+    "sites_path",
+    type=click.Path(exists=True),
+    help="Site registry to resolve a tabular file's site column against",
+)
+@click.option("--save-config", type=click.Path(), help="Write the effective layout to a file")
+@click.option(
+    "--rows", default=None, type=int, help=f"Labels per row (default: {_D.labels_per_row})"
 )
 @click.option(
-    "--page-width", default=210.0, type=float, help="Page width in mm (default: 210 for A4)"
+    "--cols", default=None, type=int, help=f"Labels per column (default: {_D.labels_per_column})"
 )
 @click.option(
-    "--page-height", default=297.0, type=float, help="Page height in mm (default: 297 for A4)"
+    "--label-width",
+    default=None,
+    type=float,
+    help=f"Label width in mm (default: {_D.label_width_mm})",
 )
-@click.option("--font-size", default=6.0, type=float, help="Font size in points (default: 6)")
-@click.option("--font-family", default="Arial", help="Font family (default: Arial)")
+@click.option(
+    "--label-height",
+    default=None,
+    type=float,
+    help=f"Label height in mm (default: {_D.label_height_mm})",
+)
+@click.option(
+    "--page-width",
+    default=None,
+    type=float,
+    help=f"Page width in mm (default: {_D.page_width_mm})",
+)
+@click.option(
+    "--page-height",
+    default=None,
+    type=float,
+    help=f"Page height in mm (default: {_D.page_height_mm})",
+)
+@click.option(
+    "--font-size",
+    default=None,
+    type=float,
+    help=f"Font size in points (default: {_D.font_size_pt})",
+)
+@click.option("--font-family", default=None, help=f"Font family (default: {_D.font_family})")
+@click.option(
+    "--text-overflow",
+    type=click.Choice(TEXT_OVERFLOW_MODES),
+    default=None,
+    help=f"Handling for text too wide for a label (default: {_D.text_overflow})",
+)
+@click.option(
+    "--label-kind",
+    type=click.Choice(LABEL_KINDS),
+    default=KIND_LOCALITY,
+    help="Which labels to print: the locality label, the determination "
+    "label, or both (specimens conventionally carry both)",
+)
+@click.option(
+    "--normalize-dates",
+    is_flag=True,
+    help="Rewrite recognised dates into the Roman-numeral label form",
+)
+@click.option(
+    "--strict-fit",
+    is_flag=True,
+    help="Treat fit warnings as errors instead of printing them",
+)
 @click.option("--open", "open_after", is_flag=True, help="Open file after generation")
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose output")
 def generate(
     input_file: str,
     output: str,
-    rows: int,
-    cols: int,
-    label_width: float,
-    label_height: float,
-    page_width: float,
-    page_height: float,
-    font_size: float,
-    font_family: str,
+    preset: Optional[str],
+    config_path: Optional[str],
+    sites_path: Optional[str],
+    save_config: Optional[str],
+    rows: Optional[int],
+    cols: Optional[int],
+    label_width: Optional[float],
+    label_height: Optional[float],
+    page_width: Optional[float],
+    page_height: Optional[float],
+    font_size: Optional[float],
+    font_family: Optional[str],
+    text_overflow: Optional[str],
+    label_kind: str,
+    normalize_dates: bool,
+    strict_fit: bool,
     open_after: bool,
     verbose: bool,
 ):
@@ -169,49 +555,56 @@ def generate(
     if verbose:
         click.echo(f"Loading data from: {input_path}")
 
-    # Load data
-    try:
-        labels = load_data(input_path)
-    except FileNotFoundError:
-        logger.error(f"File not found: {input_path}")
-        raise click.ClickException(f"Input file not found: {input_path}")
-    except ValueError as e:
-        logger.error(f"Invalid input: {e}")
-        raise click.ClickException(f"Invalid input: {e}")
-    except Exception as e:
-        logger.exception("Unexpected error loading data")
-        raise click.ClickException(f"Error loading data: {e}")
-
-    if not labels:
-        raise click.ClickException("No labels found in input file")
+    labels = _load_labels(input_path)
+    if sites_path:
+        labels = _apply_sites(labels, Path(sites_path))
+    _apply_dates(labels, normalize=normalize_dates)
 
     if verbose:
         click.echo(f"Loaded {len(labels)} labels")
 
     logger.info(f"Loaded {len(labels)} labels from {input_path}")
 
-    # Configure generator
+    # Configure generator. A preset supplies a whole geometry; individual
+    # flags still win over it, so --preset museum --font-size 5 does what
+    # it looks like it does.
     try:
-        config = LabelConfig(
-            labels_per_row=rows,
-            labels_per_column=cols,
-            label_width_mm=label_width,
-            label_height_mm=label_height,
-            page_width_mm=page_width,
-            page_height_mm=page_height,
-            font_size_pt=font_size,
-            font_family=font_family,
-            orientation="landscape" if page_width > page_height else "portrait",
+        overrides = get_preset(preset) if preset else {}
+        overrides.update(
+            _layout_overrides(
+                labels_per_row=rows,
+                labels_per_column=cols,
+                label_width_mm=label_width,
+                label_height_mm=label_height,
+                page_width_mm=page_width,
+                page_height_mm=page_height,
+                font_size_pt=font_size,
+                font_family=font_family,
+                text_overflow=text_overflow,
+            )
         )
+        config = resolve_config(config_path, overrides)
     except ValueError as e:
         raise click.ClickException(f"Invalid configuration: {e}")
 
+    if save_config:
+        try:
+            saved_to = save_config_file(config, save_config)
+        except ValueError as e:
+            raise click.ClickException(str(e))
+        click.echo(f"Layout configuration saved to: {saved_to}")
+
     generator = LabelGenerator(config)
-    generator.add_labels(labels)
+    generator.add_labels(build_sheet(labels, label_kind))
 
     if verbose:
         click.echo(f"Configuration: {rows}x{cols} labels per page")
         click.echo(f"Total pages: {generator.total_pages}")
+
+    if _report_fit(generator, strict=strict_fit):
+        raise click.ClickException(
+            "Layout problems reported above; re-run without --strict-fit to generate anyway"
+        )
 
     _write_output(generator, output_path, open_after)
 
@@ -328,27 +721,27 @@ def template(output_file: str, file_format: str):
 
     example_data = [
         {
-            "location_line1": "Italia, Trentino Alto Adige,",
-            "location_line2": "Giustino (TN), Vedretta d'Amola",
+            "location_line1": "Norway, Vestland,",
+            "location_line2": "Bergen, Fl\u00f8yen",
             "code": "N1",
-            "date": "15.vi.2024",
+            "date": "20.viii.2026",
             "additional_info": "",
             "count": 1,
         },
         {
-            "location_line1": "Italia, Trentino Alto Adige,",
+            "location_line1": "Italy, Trentino-Alto Adige,",
             "location_line2": "Giustino (TN), Vedretta d'Amola",
-            "code": "N2",
+            "code": "A1",
             "date": "15.vi.2024",
             "additional_info": "",
             "count": 1,
         },
         {
-            "location_line1": "Italia, Lombardia,",
-            "location_line2": "Sondrio, Valmalenco",
-            "code": "H1",
-            "date": "20.vii.2024",
-            "additional_info": "leg. Rossi",
+            "location_line1": "Spain, Andaluc\u00eda,",
+            "location_line2": "Granada, Sierra Nevada",
+            "code": "G1",
+            "date": "02.vii.2025",
+            "additional_info": "leg. M. Rossi",
             "count": 3,
         },
     ]
@@ -395,6 +788,28 @@ def template(output_file: str, file_format: str):
 
 
 @cli.command()
+def presets():
+    """List the available label geometries.
+
+    The smaller sizes follow published guidance from entomological
+    collections, which converges on labels around 15-18mm wide set in 4pt
+    type. 'legacy' reproduces this tool's original geometry.
+    """
+    click.echo("Available label geometries:\n")
+    for name in preset_names():
+        settings = get_preset(name)
+        click.secho(f"  {name}", bold=True, nl=False)
+        click.echo(f"  -  {DESCRIPTIONS[name]}")
+        click.echo(
+            f"      {settings['label_width_mm']}x{settings['label_height_mm']}mm, "
+            f"{settings['font_size_pt']}pt {settings['font_family']}, "
+            f"{settings['labels_per_row']}x{settings['labels_per_column']}"
+            f" = {labels_per_page(name)} labels per sheet"
+        )
+    click.echo("\n  entomology-labels generate data.csv -o labels.html --preset museum")
+
+
+@cli.command()
 def info():
     """Show information about supported formats and configuration."""
     info_text = """
@@ -410,12 +825,15 @@ SUPPORTED INPUT FORMATS:
   - YAML (.yaml, .yml)
 
 EXPECTED COLUMNS/FIELDS:
-  - location_line1 (or location1, località1)
-  - location_line2 (or location2, località2)
-  - code (or specimen_code, codice)
-  - date (or collection_date, data)
-  - additional_info (or notes, note) - optional
-  - count (or quantity) - optional, for duplicating labels
+  - location_line1 (or location1, location, loc1)
+  - location_line2 (or location2, loc2)
+  - code (or specimen_code, specimen_id, id)
+  - date (or collection_date)
+  - additional_info (or notes, info) - optional
+  - count (or quantity, copies, n) - optional, for duplicating labels
+
+  Italian headings are also accepted for older files:
+  localita1, localita2, codice, data, data_raccolta, note, quantita
 
 OUTPUT FORMATS:
   - HTML (.html) - Open in browser, print to PDF
@@ -428,11 +846,15 @@ DEFAULT LAYOUT (A4):
   - 130 labels per page
 
 LABEL FORMAT:
-  Line 1: Location (region/country)
-  Line 2: Location (municipality/locality)
+  Line 1: Location (country, region)
+  Line 2: Location (municipality, locality)
   [empty line]
   Code (specimen ID)
-  Date (collection date)
+  Date (collection date, e.g. 20.viii.2026)
+
+  Dates use the international entomological convention of a
+  Roman-numeral month, which avoids the day/month ambiguity of
+  all-numeric dates.
 """
     click.echo(info_text)
 
@@ -444,3 +866,148 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+@cli.group()
+def photos():
+    """Read collection dates and coordinates from field photographs."""
+
+
+@photos.command("probe")
+@click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option("--limit", default=5, type=int, help="Files to report on (default: 5)")
+def photos_probe(paths, limit: int):
+    """Show what metadata a few photographs actually contain.
+
+    Prints the raw EXIF tags alongside the values derived from them, and
+    writes nothing. Run this first: if coordinates come out wrong, the raw
+    tags say why, and they can be pasted into a bug report without sending
+    the photograph itself.
+
+      entomology-labels photos probe ~/Pictures/2026-08-20 --limit 5
+    """
+    found = find_photos([Path(p) for p in paths])
+    if not found:
+        raise click.ClickException("No photographs found in the given paths")
+
+    click.echo(f"Found {len(found)} photo(s); showing the first {min(limit, len(found))}\n")
+
+    read = failed = 0
+    for path in found[:limit]:
+        click.secho(f"{path}", bold=True)
+        try:
+            tags = read_photo_tags(path)
+        except PhotoReadError as e:
+            click.secho(f"  could not read: {e}", fg="red")
+            failed += 1
+            continue
+
+        for tag in (
+            "Image Model",
+            "EXIF DateTimeOriginal",
+            "GPS GPSLatitude",
+            "GPS GPSLatitudeRef",
+            "GPS GPSLongitude",
+            "GPS GPSLongitudeRef",
+            "GPS GPSAltitude",
+            "GPS GPSAltitudeRef",
+        ):
+            click.echo(f"  raw {tag:24} {tags.get(tag, '-')}")
+
+        record = _tags_to_photo(tags, path.name)
+        label_date = to_roman_date(record.taken_at) if record.taken_at else "-"
+        click.echo(f"  ->  date                     {record.taken_at or '-'}")
+        if record.has_position:
+            click.echo(
+                f"  ->  position                 {record.latitude:.5f}, {record.longitude:.5f}"
+            )
+        else:
+            click.secho("  ->  position                 none (GPS not recorded)", fg="yellow")
+        click.echo(f"  ->  elevation                {record.elevation_m or '-'}")
+        click.echo(f"  ->  label date               {label_date}")
+        click.echo("")
+        read += 1
+
+    click.echo(f"Read {read}, failed {failed}.")
+
+
+@photos.command("scan")
+@click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option("-o", "--output", required=True, help="Draft site registry to write (.yaml)")
+@click.option(
+    "--time-gap",
+    default=DEFAULT_TIME_GAP_MINUTES,
+    type=float,
+    help=f"Minutes without a photo that start a new site (default: {DEFAULT_TIME_GAP_MINUTES:.0f})",
+)
+@click.option(
+    "--radius",
+    default=DEFAULT_RADIUS_M,
+    type=float,
+    help=f"Metres from a site's centre that start a new one (default: {DEFAULT_RADIUS_M:.0f})",
+)
+@click.option(
+    "--full-paths",
+    is_flag=True,
+    help="Record whole paths rather than file names, which may expose your home directory",
+)
+@click.option(
+    "--geocode",
+    is_flag=True,
+    help="Ask an online service to suggest locality names. This sends each "
+    "site's coordinates to a third party; suggestions are written as "
+    "comments for you to confirm, never filled in automatically",
+)
+@click.option(
+    "--geocoder",
+    type=click.Choice(["nominatim", "geonames"]),
+    default="nominatim",
+    help="Which service to ask (default: nominatim)",
+)
+@click.option("--geonames-user", default="", help="GeoNames username, for that geocoder")
+def photos_scan(
+    paths,
+    output: str,
+    time_gap: float,
+    radius: float,
+    full_paths: bool,
+    geocode: bool,
+    geocoder: str,
+    geonames_user: str,
+):
+    """Group photographs into collection sites and write a draft registry.
+
+    The draft is a starting point, not a finished file: EXIF records where
+    and when, but not what the place is called or what you collected there,
+    so the locality lines come out blank for you to fill in.
+
+      entomology-labels photos scan ~/Pictures/2026-08-20 -o sites.yaml
+    """
+    output_path = _validate_draft_path(output)
+
+    events, read, skipped = scan_photos(
+        [Path(p) for p in paths],
+        time_gap_minutes=time_gap,
+        radius_m=radius,
+        full_path=full_paths,
+    )
+
+    if not events:
+        raise click.ClickException("No photographs with usable metadata were found")
+
+    suggestions = _suggest_localities(events, geocoder, geonames_user) if geocode else {}
+
+    _write_site_draft(events, output_path, read=read, skipped=skipped, suggestions=suggestions)
+
+    click.echo(f"Read {read} photo(s)" + (f", skipped {skipped}" if skipped else ""))
+    click.echo(f"Grouped into {len(events)} collection site(s):")
+    for event in events:
+        centre = event.centroid
+        where = f"{centre[0]:.4f}, {centre[1]:.4f}" if centre else "no position"
+        click.echo(
+            f"  {event.event_id}: {len(event.photos)} photo(s), "
+            f"{event.date.date() if event.date else 'undated'}, {where}"
+        )
+    click.echo(f"\nDraft written to: {output_path}")
+    click.echo("Fill in the locality lines marked TODO, add your specimen codes, then:")
+    click.echo(f"  entomology-labels generate {output_path} -o labels.html")

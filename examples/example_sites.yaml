@@ -1,0 +1,50 @@
+# A site registry: declare each collecting locality once, then refer to it by
+# id from as many specimen rows as you like. Correcting the elevation here
+# corrects every label that references the site.
+#
+#   entomology-labels generate examples/example_sites.yaml -o labels.html
+#
+# Values resolve row first, then site, then defaults, so any row may override
+# what its site says.
+
+defaults:
+  collector: "F. Mensa"
+
+sites:
+  FLOYEN:
+    location_line1: "Norway, Vestland,"
+    location_line2: "Bergen, Fløyen"
+    coordinates: {lat: 60.3964, lon: 5.3531}
+    elevation_m: 293
+    date: 2026-08-20          # ISO in, "20.viii.2026" on the label
+    habitat: "mixed woodland, under bark"
+
+  SVARTEDIKET:
+    location_line1: "Norway, Vestland,"
+    location_line2: "Bergen, Svartediket"
+    coordinates: {lat: 60.3733, lon: 5.3908}
+    elevation_m: 360
+    date: 2026-08-25
+
+  AMOLA:
+    location_line1: "Italy, Trentino-Alto Adige,"
+    location_line2: "Giustino (TN), Vedretta d'Amola"
+    coordinates: {lat: 46.1873, lon: 10.6821}
+    elevation_m: 1980
+    date: 15.vi.2024
+    collector: "M. Rossi"     # overrides the file default for this site
+
+labels:
+  - {site: FLOYEN, code: N1, species: "Myrmica sp.", count: 5}
+  - {site: FLOYEN, code: N2, count: 3}
+  - {site: FLOYEN, code: N3, additional_info: "under bark", count: 2}
+  - {site: SVARTEDIKET, code: S1, count: 4}
+  - {site: SVARTEDIKET, code: S2, date: 26.viii.2026}   # same site, next day
+  - {site: AMOLA, code: A1, species: "Formica lemani", count: 2}
+
+  # A row with no site still works, exactly as in a plain label file.
+  - location_line1: "Spain, Andalucía,"
+    location_line2: "Granada, Sierra Nevada"
+    code: "G1"
+    date: 02.vii.2025
+    count: 2

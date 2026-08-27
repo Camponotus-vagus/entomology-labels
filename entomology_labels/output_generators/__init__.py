@@ -11,8 +11,36 @@ from pathlib import Path
 from typing import Optional, Union
 
 from ..label_generator import LabelGenerator
+from ..layout import (
+    STYLE_ATTRIBUTION,
+    STYLE_CODE,
+    STYLE_COORDS,
+    STYLE_DATE,
+    STYLE_ELEVATION,
+    STYLE_INFO,
+    STYLE_LOCATION,
+    STYLE_SPACER,
+    STYLE_SPECIES,
+    render_label_lines,
+)
 
 logger = logging.getLogger(__name__)
+
+#: Maps a layout style name to the CSS class used in the generated HTML.
+HTML_STYLE_CLASSES = {
+    STYLE_LOCATION: "location-line",
+    STYLE_SPACER: "empty-line",
+    STYLE_CODE: "code",
+    STYLE_DATE: "date",
+    STYLE_INFO: "additional-info",
+    STYLE_SPECIES: "species",
+    STYLE_COORDS: "coords",
+    STYLE_ELEVATION: "elevation",
+    STYLE_ATTRIBUTION: "attribution",
+}
+
+#: Number of body slots reserved per label so every cell has equal height.
+HTML_LABEL_SLOTS = 6
 
 
 def _prepare_output_path(output_path: Union[str, Path]) -> Path:
@@ -37,6 +65,28 @@ def _prepare_output_path(output_path: Union[str, Path]) -> Path:
     except OSError as e:
         raise ValueError(f"Cannot create output directory {path.parent}: {e}")
     return path
+
+
+def _render_label_body_html(label, config) -> str:
+    """Render a label's body as the inner HTML of its ``.label-content`` div.
+
+    Lines come from the shared layout function so that HTML, DOCX and the GUI
+    preview cannot drift apart. Slots are padded to a fixed count to keep every
+    label on a sheet the same height.
+
+    Args:
+        label: The label to render
+        config: Layout configuration
+
+    Returns:
+        HTML for the label body, indented to sit inside the surrounding markup
+    """
+    divs = [
+        f'<div class="{HTML_STYLE_CLASSES[line.style]}">{_escape_html(line.text)}</div>'
+        for line in render_label_lines(label, config)
+    ]
+    divs.extend([""] * (HTML_LABEL_SLOTS - len(divs)))
+    return ("\n" + " " * 28).join(divs)
 
 
 def generate_html(
@@ -69,9 +119,33 @@ def generate_html(
     return html
 
 
+def _overflow_css(config) -> str:
+    """Return the CSS controlling what happens to text too wide for a label.
+
+    Clipping is what this tool used to do unconditionally, and it discards
+    collection data without saying so, which is why it is no longer the
+    default.
+
+    Args:
+        config: Layout configuration
+
+    Returns:
+        CSS declarations for a text line
+    """
+    mode = config.text_overflow.lower()
+    if mode == "clip":
+        return "white-space: nowrap;\n        overflow: hidden;\n        text-overflow: ellipsis;"
+    if mode == "shrink":
+        # Shrink-to-fit is approximated with a viewport-independent clamp:
+        # the browser reduces the face until the line fits the label box.
+        return "white-space: nowrap;\n        overflow: hidden;\n        font-stretch: condensed;"
+    return "overflow-wrap: anywhere;\n        white-space: normal;"
+
+
 def _generate_html_content(generator: LabelGenerator) -> str:
     """Generate the HTML content for labels."""
     config = generator.config
+    overflow_css = _overflow_css(config)
 
     # CSS styles
     css = f"""
@@ -114,7 +188,7 @@ def _generate_html_content(generator: LabelGenerator) -> str:
     .label {{
         width: {config.label_width_mm}mm;
         height: {config.label_height_mm}mm;
-        padding: 1mm;
+        padding: {config.label_padding_mm}mm;
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -129,9 +203,7 @@ def _generate_html_content(generator: LabelGenerator) -> str:
 
     .location-line {{
         font-size: {config.font_size_pt}pt;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        {overflow_css}
     }}
 
     .empty-line {{
@@ -150,6 +222,15 @@ def _generate_html_content(generator: LabelGenerator) -> str:
     .additional-info {{
         font-size: {config.font_size_pt * 0.9}pt;
         font-style: italic;
+    }}
+
+    .species {{
+        font-size: {config.font_size_pt}pt;
+        font-style: italic;
+    }}
+
+    .coords, .elevation, .attribution {{
+        font-size: {config.font_size_pt}pt;
     }}
 
     /* Print styles */
@@ -222,22 +303,11 @@ def _generate_html_content(generator: LabelGenerator) -> str:
         for row in grid:
             for label in row:
                 if label and not label.is_empty():
-                    if label.additional_info:
-                        info_html = (
-                            '<div class="additional-info">'
-                            f"{_escape_html(label.additional_info)}</div>"
-                        )
-                    else:
-                        info_html = ""
+                    body = _render_label_body_html(label, config)
                     label_html = f"""
                     <div class="label">
                         <div class="label-content">
-                            <div class="location-line">{_escape_html(label.location_line1)}</div>
-                            <div class="location-line">{_escape_html(label.location_line2)}</div>
-                            <div class="empty-line"></div>
-                            <div class="code">{_escape_html(label.code)}</div>
-                            <div class="date">{_escape_html(label.date)}</div>
-                            {info_html}
+                            {body}
                         </div>
                     </div>
                     """
@@ -246,7 +316,7 @@ def _generate_html_content(generator: LabelGenerator) -> str:
                 labels_html.append(label_html)
 
         page_html = f"""
-        <div class="page-info no-print">Pagina {page_num + 1} di {generator.total_pages}</div>
+        <div class="page-info no-print">Page {page_num + 1} of {generator.total_pages}</div>
         <div class="page">
             {''.join(labels_html)}
         </div>
@@ -254,17 +324,17 @@ def _generate_html_content(generator: LabelGenerator) -> str:
         pages_html.append(page_html)
 
     html = f"""<!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Etichette Entomologiche</title>
+    <title>Entomology Labels</title>
     <style>
         {css}
     </style>
 </head>
 <body>
-    <button class="print-button no-print" onclick="window.print()">Stampa / Salva PDF</button>
+    <button class="print-button no-print" onclick="window.print()">Print / Save PDF</button>
     {''.join(pages_html)}
     <script>
         // Auto-adjust for print
@@ -404,41 +474,15 @@ def generate_docx(
                 cell.paragraphs[0].clear()
 
                 if label and not label.is_empty():
-                    # Location line 1
-                    p1 = cell.paragraphs[0]
-                    run1 = p1.add_run(label.location_line1)
-                    run1.font.size = Pt(config.font_size_pt)
-                    run1.font.name = config.font_family
-
-                    # Location line 2
-                    p2 = cell.add_paragraph()
-                    run2 = p2.add_run(label.location_line2)
-                    run2.font.size = Pt(config.font_size_pt)
-                    run2.font.name = config.font_family
-
-                    # Empty line
-                    p3 = cell.add_paragraph()
-                    p3.add_run("")
-
-                    # Code
-                    p4 = cell.add_paragraph()
-                    run4 = p4.add_run(label.code)
-                    run4.font.size = Pt(config.font_size_pt)
-                    run4.font.name = config.font_family
-
-                    # Date
-                    p5 = cell.add_paragraph()
-                    run5 = p5.add_run(label.date)
-                    run5.font.size = Pt(config.font_size_pt)
-                    run5.font.name = config.font_family
-
-                    # Additional info (if any)
-                    if label.additional_info:
-                        p6 = cell.add_paragraph()
-                        run6 = p6.add_run(label.additional_info)
-                        run6.font.size = Pt(config.font_size_pt * 0.9)
-                        run6.font.name = config.font_family
-                        run6.italic = True
+                    for line_idx, line in enumerate(render_label_lines(label, config)):
+                        # The cell already owns an empty first paragraph.
+                        paragraph = cell.paragraphs[0] if line_idx == 0 else cell.add_paragraph()
+                        run = paragraph.add_run(line.text)
+                        if line.style != STYLE_SPACER:
+                            run.font.size = Pt(config.font_size_pt * line.scale)
+                            run.font.name = config.font_family
+                            if line.italic:
+                                run.italic = True
 
                     # Set paragraph spacing
                     for p in cell.paragraphs:

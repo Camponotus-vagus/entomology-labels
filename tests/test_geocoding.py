@@ -1,0 +1,233 @@
+"""Tests for locality suggestions."""
+
+import json
+from unittest import mock
+
+import pytest
+
+from entomology_labels.geocoding import (
+    OSM_ATTRIBUTION,
+    USER_AGENT,
+    CachingGeocoder,
+    GeocodeUnavailable,
+    GeoNamesGeocoder,
+    NominatimGeocoder,
+    PlaceSuggestion,
+    build_geocoder,
+    suggest_for_events,
+)
+from entomology_labels.photos import CollectionEvent, PhotoRecord
+
+# A Nominatim reply of the shape returned for a hillside above Bergen.
+NOMINATIM_BERGEN = {
+    "display_name": "Fløyen, Bergen, Vestland, Norway",
+    "address": {
+        "natural": "Fløyen",
+        "city": "Bergen",
+        "municipality": "Bergen",
+        "state": "Vestland",
+        "country": "Norway",
+        "country_code": "no",
+    },
+}
+
+GEONAMES_BERGEN = {
+    "geonames": [{"name": "Fløyen", "adminName1": "Vestland", "countryName": "Norway", "fcl": "T"}]
+}
+
+
+def _urlopen_returning(payload):
+    """Patch urlopen to return a canned JSON body."""
+    response = mock.MagicMock()
+    response.read.return_value = json.dumps(payload).encode("utf-8")
+    response.__enter__.return_value = response
+    return mock.patch("urllib.request.urlopen", return_value=response)
+
+
+def _urlopen_raising(exc):
+    return mock.patch("urllib.request.urlopen", side_effect=exc)
+
+
+class TestNominatim:
+    def test_builds_both_locality_lines(self):
+        with _urlopen_returning(NOMINATIM_BERGEN):
+            suggestion = NominatimGeocoder().reverse(60.3964, 5.3531)
+
+        assert suggestion.location_line1 == "Norway, Vestland,"
+        assert suggestion.location_line2 == "Bergen, Fløyen"
+
+    def test_identifies_itself_as_the_usage_policy_requires(self):
+        with _urlopen_returning(NOMINATIM_BERGEN) as opener:
+            NominatimGeocoder().reverse(60.3964, 5.3531)
+
+        request = opener.call_args[0][0]
+        assert request.get_header("User-agent") == USER_AGENT
+
+    def test_an_empty_address_yields_no_suggestion(self):
+        with _urlopen_returning({"address": {}}):
+            assert NominatimGeocoder().reverse(0.0, 0.0) is None
+
+    def test_a_network_failure_is_distinguishable_from_no_answer(self):
+        """An outage must not be mistaken for the service having nothing."""
+        with _urlopen_raising(OSError("no route to host")):
+            with pytest.raises(GeocodeUnavailable):
+                NominatimGeocoder().reverse(60.0, 5.0)
+
+    def test_unparseable_data_is_treated_as_an_outage(self):
+        response = mock.MagicMock()
+        response.read.return_value = b"<html>not json</html>"
+        response.__enter__.return_value = response
+        with mock.patch("urllib.request.urlopen", return_value=response):
+            with pytest.raises(GeocodeUnavailable):
+                NominatimGeocoder().reverse(60.0, 5.0)
+
+    def test_hostile_text_in_a_response_is_sanitized(self):
+        payload = {"address": {"country": "Norway\x00\x07", "city": "B" * 5000}}
+        with _urlopen_returning(payload):
+            suggestion = NominatimGeocoder().reverse(60.0, 5.0)
+
+        assert "\x00" not in suggestion.location_line1
+        assert len(suggestion.location_line2) <= 200
+
+
+class TestGeoNames:
+    def test_builds_a_suggestion(self):
+        with _urlopen_returning(GEONAMES_BERGEN):
+            suggestion = GeoNamesGeocoder("someuser").reverse(60.3964, 5.3531)
+
+        assert suggestion.location_line1 == "Norway, Vestland,"
+        assert suggestion.location_line2 == "Fløyen"
+
+    def test_a_username_is_required(self):
+        with pytest.raises(ValueError, match="username"):
+            GeoNamesGeocoder("")
+
+    def test_no_results_yields_no_suggestion(self):
+        with _urlopen_returning({"geonames": []}):
+            assert GeoNamesGeocoder("someuser").reverse(0.0, 0.0) is None
+
+
+class TestCaching:
+    def test_a_repeated_lookup_does_not_hit_the_service(self, tmp_path):
+        inner = mock.MagicMock()
+        inner.name = "stub"
+        inner.attribution = "stub"
+        inner.reverse.return_value = PlaceSuggestion("Norway,", "Bergen", "stub")
+        geocoder = CachingGeocoder(inner, tmp_path / "cache.json")
+
+        geocoder.reverse(60.3964, 5.3531)
+        geocoder.reverse(60.3964, 5.3531)
+
+        assert inner.reverse.call_count == 1
+
+    def test_the_cache_survives_a_new_process(self, tmp_path):
+        cache = tmp_path / "cache.json"
+        inner = mock.MagicMock()
+        inner.name = "stub"
+        inner.reverse.return_value = PlaceSuggestion("Norway,", "Bergen", "stub")
+        CachingGeocoder(inner, cache).reverse(60.3964, 5.3531)
+
+        second = mock.MagicMock()
+        second.name = "stub"
+        result = CachingGeocoder(second, cache).reverse(60.3964, 5.3531)
+
+        assert second.reverse.call_count == 0
+        assert result.location_line2 == "Bergen"
+
+    def test_a_negative_result_is_cached_too(self, tmp_path):
+        inner = mock.MagicMock()
+        inner.name = "stub"
+        inner.reverse.return_value = None
+        geocoder = CachingGeocoder(inner, tmp_path / "cache.json")
+
+        assert geocoder.reverse(0.0, 0.0) is None
+        assert geocoder.reverse(0.0, 0.0) is None
+        assert inner.reverse.call_count == 1
+
+    def test_a_corrupt_cache_is_ignored_rather_than_fatal(self, tmp_path):
+        cache = tmp_path / "cache.json"
+        cache.write_text("{not json", encoding="utf-8")
+        inner = mock.MagicMock()
+        inner.name = "stub"
+        inner.reverse.return_value = PlaceSuggestion("Norway,", "Bergen", "stub")
+
+        assert CachingGeocoder(inner, cache).reverse(60.0, 5.0) is not None
+
+
+class TestBuildGeocoder:
+    def test_nominatim_needs_nothing(self, tmp_path):
+        assert build_geocoder("nominatim", cache_path=tmp_path / "c.json").name == "nominatim"
+
+    def test_credits_openstreetmap(self, tmp_path):
+        geocoder = build_geocoder("nominatim", cache_path=tmp_path / "c.json")
+
+        assert geocoder.attribution == OSM_ATTRIBUTION
+
+    def test_an_unknown_name_is_rejected(self):
+        with pytest.raises(ValueError, match="unknown geocoder"):
+            build_geocoder("googlemaps")
+
+
+class TestSuggestForEvents:
+    def test_one_lookup_per_site_not_per_photo(self):
+        """Forty frames from one morning must be a single request."""
+        event = CollectionEvent(
+            "S1",
+            [PhotoRecord(f"p{i}.ORF", latitude=60.3964, longitude=5.3531) for i in range(40)],
+        )
+        geocoder = mock.MagicMock()
+        geocoder.reverse.return_value = PlaceSuggestion("Norway,", "Bergen", "stub")
+
+        suggest_for_events([event], geocoder)
+
+        assert geocoder.reverse.call_count == 1
+
+    def test_an_event_without_a_position_is_skipped(self):
+        event = CollectionEvent("S1", [PhotoRecord("p.ORF")])
+        geocoder = mock.MagicMock()
+
+        results = suggest_for_events([event], geocoder)
+
+        assert results == [("S1", None)]
+        assert geocoder.reverse.call_count == 0
+
+
+class TestOutagesAreNotCached:
+    """An outage cached as 'no result' would mean never asking again."""
+
+    def test_a_failure_is_reported_as_no_suggestion(self, tmp_path):
+        inner = mock.MagicMock()
+        inner.name = "stub"
+        inner.reverse.side_effect = GeocodeUnavailable("network down")
+
+        assert CachingGeocoder(inner, tmp_path / "cache.json").reverse(60.0, 5.0) is None
+
+    def test_a_later_attempt_still_reaches_the_service(self, tmp_path):
+        cache = tmp_path / "cache.json"
+        inner = mock.MagicMock()
+        inner.name = "stub"
+        inner.reverse.side_effect = [
+            GeocodeUnavailable("network down"),
+            PlaceSuggestion("Norway,", "Bergen", "stub"),
+        ]
+        geocoder = CachingGeocoder(inner, cache)
+
+        assert geocoder.reverse(60.0, 5.0) is None
+        assert geocoder.reverse(60.0, 5.0).location_line2 == "Bergen"
+
+    def test_nothing_is_written_to_the_cache_file(self, tmp_path):
+        cache = tmp_path / "cache.json"
+        inner = mock.MagicMock()
+        inner.name = "stub"
+        inner.reverse.side_effect = GeocodeUnavailable("network down")
+
+        CachingGeocoder(inner, cache).reverse(60.0, 5.0)
+
+        assert not cache.exists()
+
+    def test_a_scan_continues_when_the_service_is_down(self):
+        event = CollectionEvent("S1", [PhotoRecord("p.ORF", latitude=60.0, longitude=5.0)])
+        geocoder = mock.MagicMock()
+        geocoder.reverse.side_effect = GeocodeUnavailable("network down")
+
+        assert suggest_for_events([event], geocoder) == [("S1", None)]

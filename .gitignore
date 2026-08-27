@@ -29,3 +29,17 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Raw photographs; never commit one, the tests build a synthetic file instead
+*.ORF
+*.orf
+*.CR2
+*.NEF
+*.ARW
+*.RW2
+*.DNG

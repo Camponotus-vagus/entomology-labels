@@ -1,6 +1,7 @@
 """Tests for the input handlers module."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -146,3 +147,33 @@ class TestCountExpansion:
         path = json_file([{"code": "N1", "count": -5}])
         with pytest.raises(ValueError, match="cannot be negative"):
             load_data(path)
+
+
+class TestShippedExamples:
+    """The example files are documentation; they must load and agree."""
+
+    EXAMPLES = Path(__file__).resolve().parent.parent / "examples"
+
+    def test_every_example_format_loads(self):
+        for name in ("example_labels.json", "example_labels.csv", "example_labels.txt"):
+            labels = load_data(self.EXAMPLES / name)
+            assert labels, f"{name} produced no labels"
+
+    def test_the_three_formats_describe_the_same_data(self):
+        """They are hand-maintained siblings and drift silently otherwise."""
+        loaded = {
+            name: [label.to_dict() for label in load_data(self.EXAMPLES / name)]
+            for name in ("example_labels.json", "example_labels.csv", "example_labels.txt")
+        }
+
+        reference = loaded["example_labels.json"]
+        for name, labels in loaded.items():
+            assert labels == reference, f"{name} disagrees with example_labels.json"
+
+    def test_non_ascii_localities_survive_the_round_trip(self):
+        """Diacritics in place names are the common case outside English."""
+        localities = {
+            label.location_line2 for label in load_data(self.EXAMPLES / "example_labels.json")
+        }
+
+        assert "Bergen, Fløyen" in localities

@@ -52,12 +52,19 @@ pdf = [
 yaml = [
     "pyyaml>=6.0",
 ]
+photos = [
+    # Pure Python, and reads the TIFF-based raw formats cameras write
+    # (ORF, NEF, CR2, DNG). No pixel data is decoded, so no image codec
+    # is involved in reading a photo's metadata.
+    "exifread>=3.0",
+]
 all = [
     "pandas>=1.5",
     "openpyxl>=3.0",
     "python-docx>=0.8",
     "weasyprint>=57.0",
     "pyyaml>=6.0",
+    "exifread>=3.0",
 ]
 dev = [
     "pytest>=7.0",

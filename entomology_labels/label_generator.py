@@ -7,15 +7,17 @@ Handles the generation of entomology labels with configurable dimensions and lay
 import logging
 import math
 import re
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import dataclass, replace
+from typing import ClassVar, List, Optional, Tuple
 
 from .config import (
+    DEFAULT_TEXT_OVERFLOW,
     FONT_FAMILY_PATTERN,
     FONT_SIZE_PT_MAX,
     FONT_SIZE_PT_MIN,
     LABEL_HEIGHT_MM_MAX,
     LABEL_HEIGHT_MM_MIN,
+    LABEL_PADDING_MM,
     LABEL_WIDTH_MM_MAX,
     LABEL_WIDTH_MM_MIN,
     LABELS_PER_COLUMN_MAX,
@@ -26,6 +28,7 @@ from .config import (
     MARGIN_MM_MIN,
     MAX_LABELS_PER_GENERATOR,
     MAX_SEQUENTIAL_LABELS,
+    TEXT_OVERFLOW_MODES,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +72,14 @@ class LabelConfig:
         font_family: Font family name (default: Arial)
         line_spacing: Line spacing multiplier (default: 1.0)
         orientation: Page orientation ('landscape' or 'portrait', default: 'landscape')
+        label_padding_mm: Padding inside each label (default: 1.0). At small
+            label sizes this is a large fraction of the height, so dense
+            layouts reduce it
+        spacer_line: Whether to leave a blank line between the locality and
+            the code (default: True). Dropping it frees a whole line
+        text_overflow: How text too wide for the label is handled --
+            'wrap' onto another line, 'clip' it with an ellipsis, or
+            'shrink' the font until it fits (default: 'wrap')
     """
 
     labels_per_row: int = 10
@@ -85,6 +96,9 @@ class LabelConfig:
     font_family: str = "Arial"
     line_spacing: float = 1.0
     orientation: str = "landscape"  # 'landscape' or 'portrait'
+    text_overflow: str = DEFAULT_TEXT_OVERFLOW
+    label_padding_mm: float = LABEL_PADDING_MM
+    spacer_line: bool = True
 
     def __post_init__(self):
         """Validate configuration values after initialization."""
@@ -152,6 +166,18 @@ class LabelConfig:
                 f"orientation must be 'landscape' or 'portrait', " f"got '{self.orientation}'"
             )
 
+        if not (0.0 <= self.label_padding_mm <= MARGIN_MM_MAX):
+            raise ValueError(
+                f"label_padding_mm must be between 0 and {MARGIN_MM_MAX}, "
+                f"got {self.label_padding_mm}"
+            )
+
+        if self.text_overflow.lower() not in TEXT_OVERFLOW_MODES:
+            raise ValueError(
+                f"text_overflow must be one of {TEXT_OVERFLOW_MODES}, "
+                f"got '{self.text_overflow}'"
+            )
+
     @property
     def is_landscape(self) -> bool:
         """Check if orientation is landscape."""
@@ -189,6 +215,9 @@ class LabelConfig:
             "font_family": self.font_family,
             "line_spacing": self.line_spacing,
             "orientation": self.orientation,
+            "text_overflow": self.text_overflow,
+            "label_padding_mm": self.label_padding_mm,
+            "spacer_line": self.spacer_line,
         }
 
     @classmethod
@@ -199,14 +228,29 @@ class LabelConfig:
 
 @dataclass
 class Label:
-    """Represents a single entomology label.
+    """A single specimen label.
+
+    Fields hold text ready to print, not raw values: coordinates and elevation
+    arrive already formatted, so that the decision between 46.1873N and
+    46 deg 11' 14" N is made once, where the numbers are, rather than
+    separately in each renderer.
 
     Attributes:
-        location_line1: First line of location (e.g., "Italia, Trentino Alto Adige,")
-        location_line2: Second line of location (e.g., "Giustino (TN), Vedretta d'Amola")
-        code: Specimen code (e.g., "N1", "H2")
-        date: Collection date (optional)
-        additional_info: Any additional information (optional)
+        location_line1: Country and region, e.g. "Norway, Vestland,"
+        location_line2: Municipality and locality, e.g. "Bergen, Fløyen"
+        code: Specimen code, e.g. "N1"
+        date: Collection date, e.g. "20.viii.2026"
+        additional_info: Anything else worth recording (optional)
+        species: Taxon name, printed on the determination label (optional)
+        coordinates: Pre-formatted coordinates, e.g. "60.3965N 5.3531E" (optional)
+        elevation: Pre-formatted elevation, e.g. "310 m" (optional)
+        collector: Who collected it; printed as "leg. ..." (optional)
+        determiner: Who identified it; printed as "det. ..." (optional)
+        site: Id of the collection site this label refers to. A reference,
+            not printed text; resolved against a site registry (optional)
+        render_as: Which label this renders as, "locality" or "determination".
+            A display concern, not collection data, so it is left out of
+            to_dict() and ignored when deciding whether a label is empty.
     """
 
     location_line1: str = ""
@@ -214,47 +258,82 @@ class Label:
     code: str = ""
     date: str = ""
     additional_info: str = ""
+    species: str = ""
+    coordinates: str = ""
+    elevation: str = ""
+    collector: str = ""
+    determiner: str = ""
+    site: str = ""
+    render_as: str = "locality"
+
+    #: Fields that carry collection data, as opposed to rendering state.
+    CONTENT_FIELDS: ClassVar[Tuple[str, ...]] = (
+        "location_line1",
+        "location_line2",
+        "code",
+        "date",
+        "additional_info",
+        "species",
+        "coordinates",
+        "elevation",
+        "collector",
+        "determiner",
+        "site",
+    )
 
     def __post_init__(self):
-        """Sanitize all string fields after initialization."""
-        self.location_line1 = _sanitize_string(self.location_line1)
-        self.location_line2 = _sanitize_string(self.location_line2)
-        self.code = _sanitize_string(self.code)
-        self.date = _sanitize_string(self.date)
-        self.additional_info = _sanitize_string(self.additional_info)
+        """Sanitize every text field after initialization."""
+        for name in self.CONTENT_FIELDS:
+            setattr(self, name, _sanitize_string(getattr(self, name)))
 
     def is_empty(self) -> bool:
         """Check if the label has no content."""
-        return not any(
-            [
-                self.location_line1.strip(),
-                self.location_line2.strip(),
-                self.code.strip(),
-                self.date.strip(),
-                self.additional_info.strip(),
-            ]
-        )
+        return not any(getattr(self, name).strip() for name in self.CONTENT_FIELDS)
 
     def to_dict(self) -> dict:
         """Convert label to dictionary."""
-        return {
-            "location_line1": self.location_line1,
-            "location_line2": self.location_line2,
-            "code": self.code,
-            "date": self.date,
-            "additional_info": self.additional_info,
-        }
+        return {name: getattr(self, name) for name in self.CONTENT_FIELDS}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Label":
-        """Create label from dictionary."""
-        return cls(
-            location_line1=str(data.get("location_line1", data.get("location1", ""))),
-            location_line2=str(data.get("location_line2", data.get("location2", ""))),
-            code=str(data.get("code", data.get("specimen_code", ""))),
-            date=str(data.get("date", data.get("collection_date", ""))),
-            additional_info=str(data.get("additional_info", data.get("notes", ""))),
-        )
+        """Create label from dictionary, accepting the usual field aliases."""
+        aliases = {
+            "location_line1": ("location_line1", "location1"),
+            "location_line2": ("location_line2", "location2"),
+            "code": ("code", "specimen_code"),
+            "date": ("date", "collection_date"),
+            "additional_info": ("additional_info", "notes"),
+            "species": ("species", "taxon"),
+            "coordinates": ("coordinates", "coords"),
+            "elevation": ("elevation", "altitude"),
+            "collector": ("collector", "leg"),
+            "determiner": ("determiner", "det"),
+            "site": ("site", "site_id"),
+        }
+        values = {}
+        for field_name, names in aliases.items():
+            for name in names:
+                if name in data and data[name] is not None:
+                    values[field_name] = str(data[name])
+                    break
+        return cls(**values)
+
+
+def expand_label(label: Label, count: int) -> List[Label]:
+    """Return ``count`` independent copies of ``label``.
+
+    Uses dataclasses.replace so that every field is carried over, including
+    any added later. Hand-written copies that enumerate the fields silently
+    drop new ones, which is why this lives in exactly one place.
+
+    Args:
+        label: The label to duplicate
+        count: Number of copies to produce
+
+    Returns:
+        A list of independent copies; empty when count is not positive
+    """
+    return [replace(label) for _ in range(count)]
 
 
 class LabelGenerator:
@@ -361,16 +440,7 @@ class LabelGenerator:
         Returns:
             List of label copies
         """
-        return [
-            Label(
-                location_line1=label.location_line1,
-                location_line2=label.location_line2,
-                code=label.code,
-                date=label.date,
-                additional_info=label.additional_info,
-            )
-            for _ in range(count)
-        ]
+        return expand_label(label, count)
 
     def generate_sequential_labels(
         self,

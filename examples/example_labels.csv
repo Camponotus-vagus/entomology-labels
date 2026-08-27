@@ -1,11 +1,11 @@
 location_line1,location_line2,code,date,additional_info,count
-"Italia, Trentino Alto Adige,","Giustino (TN), Vedretta d'Amola",N1,15.vi.2024,,5
-"Italia, Trentino Alto Adige,","Giustino (TN), Vedretta d'Amola",N2,15.vi.2024,,3
-"Italia, Trentino Alto Adige,","Giustino (TN), Vedretta d'Amola",N3,16.vi.2024,,4
-"Italia, Trentino Alto Adige,","Giustino (TN), Vedretta d'Amola",H1,17.vi.2024,,2
-"Italia, Trentino Alto Adige,","Giustino (TN), Vedretta d'Amola",H2,17.vi.2024,,3
-"Italia, Lombardia,","Sondrio, Valmalenco",O1,20.vii.2024,leg. Rossi,2
-"Italia, Lombardia,","Sondrio, Valmalenco",O2,20.vii.2024,,3
-"Italia, Piemonte,","Cuneo, Valle Pesio",G1,25.vii.2024,,4
-"Italia, Piemonte,","Cuneo, Valle Pesio",G2,25.vii.2024,,2
-"Italia, Veneto,","Belluno, Dolomiti",I1,01.viii.2024,,5
+"Norway, Vestland,","Bergen, Fløyen",N1,20.viii.2026,,5
+"Norway, Vestland,","Bergen, Fløyen",N2,20.viii.2026,,3
+"Norway, Vestland,","Bergen, Fløyen",N3,20.viii.2026,under bark,4
+"Norway, Vestland,","Bergen, Svartediket",S1,25.viii.2026,,2
+"Norway, Vestland,","Bergen, Svartediket",S2,25.viii.2026,leg. F. Mensa,3
+"Italy, Trentino-Alto Adige,","Giustino (TN), Vedretta d'Amola",A1,15.vi.2024,,4
+"Italy, Trentino-Alto Adige,","Giustino (TN), Vedretta d'Amola",A2,16.vi.2024,,2
+"Italy, Lombardia,","Sondrio, Valmalenco",V1,20.vii.2024,leg. M. Rossi,3
+"Spain, Andalucía,","Granada, Sierra Nevada",G1,02.vii.2025,2100 m,2
+"Spain, Andalucía,","Granada, Sierra Nevada",G2,02.vii.2025,,3

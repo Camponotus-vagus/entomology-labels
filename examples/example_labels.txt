@@ -1,30 +1,63 @@
-location1: Italia, Trentino Alto Adige,
-location2: Giustino (TN), Vedretta d'Amola
+location1: Norway, Vestland,
+location2: Bergen, Fløyen
 code: N1
-date: 15.vi.2024
+date: 20.viii.2026
 count: 5
 
-location1: Italia, Trentino Alto Adige,
-location2: Giustino (TN), Vedretta d'Amola
+location1: Norway, Vestland,
+location2: Bergen, Fløyen
 code: N2
-date: 15.vi.2024
+date: 20.viii.2026
 count: 3
 
-location1: Italia, Trentino Alto Adige,
-location2: Giustino (TN), Vedretta d'Amola
+location1: Norway, Vestland,
+location2: Bergen, Fløyen
 code: N3
-date: 16.vi.2024
+date: 20.viii.2026
+notes: under bark
 count: 4
 
-location1: Italia, Trentino Alto Adige,
-location2: Giustino (TN), Vedretta d'Amola
-code: H1
-date: 17.vi.2024
+location1: Norway, Vestland,
+location2: Bergen, Svartediket
+code: S1
+date: 25.viii.2026
 count: 2
 
-location1: Italia, Lombardia,
-location2: Sondrio, Valmalenco
-code: O1
-date: 20.vii.2024
-notes: leg. Rossi
+location1: Norway, Vestland,
+location2: Bergen, Svartediket
+code: S2
+date: 25.viii.2026
+notes: leg. F. Mensa
+count: 3
+
+location1: Italy, Trentino-Alto Adige,
+location2: Giustino (TN), Vedretta d'Amola
+code: A1
+date: 15.vi.2024
+count: 4
+
+location1: Italy, Trentino-Alto Adige,
+location2: Giustino (TN), Vedretta d'Amola
+code: A2
+date: 16.vi.2024
 count: 2
+
+location1: Italy, Lombardia,
+location2: Sondrio, Valmalenco
+code: V1
+date: 20.vii.2024
+notes: leg. M. Rossi
+count: 3
+
+location1: Spain, Andalucía,
+location2: Granada, Sierra Nevada
+code: G1
+date: 02.vii.2025
+notes: 2100 m
+count: 2
+
+location1: Spain, Andalucía,
+location2: Granada, Sierra Nevada
+code: G2
+date: 02.vii.2025
+count: 3
