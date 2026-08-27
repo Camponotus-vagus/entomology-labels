@@ -7,11 +7,13 @@ Provides commands for generating labels from various input formats.
 import logging
 import os
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import click
 
 from . import __version__
-from .config import DEFAULT_TEXT_OVERFLOW, LOG_FORMAT, LOG_LEVEL, TEXT_OVERFLOW_MODES
+from .config import LOG_FORMAT, LOG_LEVEL, TEXT_OVERFLOW_MODES
+from .config_io import resolve_config, save_config_file
 from .fit import check_fit
 from .input_handlers import load_data
 from .label_generator import LabelConfig, LabelGenerator
@@ -114,6 +116,64 @@ def cli():
     pass
 
 
+#: Dataclass defaults, so --help text and the CLI cannot drift from LabelConfig.
+_D = LabelConfig()
+
+
+def _layout_overrides(**values: Any) -> Dict[str, Any]:
+    """Drop unset options so they do not mask a configuration file.
+
+    click cannot distinguish "the user typed the default" from "the user typed
+    nothing", so every layout option defaults to None and the unset ones are
+    removed here.
+
+    Args:
+        **values: Layout settings, any of which may be None
+
+    Returns:
+        Only the settings that were actually supplied, plus a page
+        orientation derived from the page dimensions when those were given
+    """
+    supplied = {k: v for k, v in values.items() if v is not None}
+
+    width = supplied.get("page_width_mm")
+    height = supplied.get("page_height_mm")
+    if width is not None and height is not None:
+        supplied["orientation"] = "landscape" if width > height else "portrait"
+
+    return supplied
+
+
+def _load_labels(input_path: Path) -> list:
+    """Load labels from an input file, turning failures into CLI errors.
+
+    Args:
+        input_path: Path to the input file
+
+    Returns:
+        The labels the file describes
+
+    Raises:
+        click.ClickException: If the file is missing, invalid, or empty
+    """
+    try:
+        labels = load_data(input_path)
+    except FileNotFoundError:
+        logger.error(f"File not found: {input_path}")
+        raise click.ClickException(f"Input file not found: {input_path}")
+    except ValueError as e:
+        logger.error(f"Invalid input: {e}")
+        raise click.ClickException(f"Invalid input: {e}")
+    except Exception as e:
+        logger.exception("Unexpected error loading data")
+        raise click.ClickException(f"Error loading data: {e}")
+
+    if not labels:
+        raise click.ClickException("No labels found in input file")
+
+    return labels
+
+
 def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
     """Print any fit warnings for a generator to stderr.
 
@@ -144,25 +204,50 @@ def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("-o", "--output", required=True, help="Output file path (.html, .pdf, or .docx)")
-@click.option("--rows", default=10, type=int, help="Labels per row (default: 10)")
-@click.option("--cols", default=13, type=int, help="Labels per column (default: 13)")
-@click.option("--label-width", default=21.0, type=float, help="Label width in mm (default: 21.0)")
+@click.option("--config", "config_path", type=click.Path(), help="Layout configuration file")
+@click.option("--save-config", type=click.Path(), help="Write the effective layout to a file")
 @click.option(
-    "--label-height", default=22.85, type=float, help="Label height in mm (default: 22.85)"
+    "--rows", default=None, type=int, help=f"Labels per row (default: {_D.labels_per_row})"
 )
 @click.option(
-    "--page-width", default=210.0, type=float, help="Page width in mm (default: 210 for A4)"
+    "--cols", default=None, type=int, help=f"Labels per column (default: {_D.labels_per_column})"
 )
 @click.option(
-    "--page-height", default=297.0, type=float, help="Page height in mm (default: 297 for A4)"
+    "--label-width",
+    default=None,
+    type=float,
+    help=f"Label width in mm (default: {_D.label_width_mm})",
 )
-@click.option("--font-size", default=6.0, type=float, help="Font size in points (default: 6)")
-@click.option("--font-family", default="Arial", help="Font family (default: Arial)")
+@click.option(
+    "--label-height",
+    default=None,
+    type=float,
+    help=f"Label height in mm (default: {_D.label_height_mm})",
+)
+@click.option(
+    "--page-width",
+    default=None,
+    type=float,
+    help=f"Page width in mm (default: {_D.page_width_mm})",
+)
+@click.option(
+    "--page-height",
+    default=None,
+    type=float,
+    help=f"Page height in mm (default: {_D.page_height_mm})",
+)
+@click.option(
+    "--font-size",
+    default=None,
+    type=float,
+    help=f"Font size in points (default: {_D.font_size_pt})",
+)
+@click.option("--font-family", default=None, help=f"Font family (default: {_D.font_family})")
 @click.option(
     "--text-overflow",
     type=click.Choice(TEXT_OVERFLOW_MODES),
-    default=DEFAULT_TEXT_OVERFLOW,
-    help=f"Handling for text too wide for a label (default: {DEFAULT_TEXT_OVERFLOW})",
+    default=None,
+    help=f"Handling for text too wide for a label (default: {_D.text_overflow})",
 )
 @click.option(
     "--strict-fit",
@@ -174,15 +259,17 @@ def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
 def generate(
     input_file: str,
     output: str,
-    rows: int,
-    cols: int,
-    label_width: float,
-    label_height: float,
-    page_width: float,
-    page_height: float,
-    font_size: float,
-    font_family: str,
-    text_overflow: str,
+    config_path: Optional[str],
+    save_config: Optional[str],
+    rows: Optional[int],
+    cols: Optional[int],
+    label_width: Optional[float],
+    label_height: Optional[float],
+    page_width: Optional[float],
+    page_height: Optional[float],
+    font_size: Optional[float],
+    font_family: Optional[str],
+    text_overflow: Optional[str],
     strict_fit: bool,
     open_after: bool,
     verbose: bool,
@@ -211,21 +298,7 @@ def generate(
     if verbose:
         click.echo(f"Loading data from: {input_path}")
 
-    # Load data
-    try:
-        labels = load_data(input_path)
-    except FileNotFoundError:
-        logger.error(f"File not found: {input_path}")
-        raise click.ClickException(f"Input file not found: {input_path}")
-    except ValueError as e:
-        logger.error(f"Invalid input: {e}")
-        raise click.ClickException(f"Invalid input: {e}")
-    except Exception as e:
-        logger.exception("Unexpected error loading data")
-        raise click.ClickException(f"Error loading data: {e}")
-
-    if not labels:
-        raise click.ClickException("No labels found in input file")
+    labels = _load_labels(input_path)
 
     if verbose:
         click.echo(f"Loaded {len(labels)} labels")
@@ -234,20 +307,29 @@ def generate(
 
     # Configure generator
     try:
-        config = LabelConfig(
-            labels_per_row=rows,
-            labels_per_column=cols,
-            label_width_mm=label_width,
-            label_height_mm=label_height,
-            page_width_mm=page_width,
-            page_height_mm=page_height,
-            font_size_pt=font_size,
-            font_family=font_family,
-            orientation="landscape" if page_width > page_height else "portrait",
-            text_overflow=text_overflow,
+        config = resolve_config(
+            config_path,
+            _layout_overrides(
+                labels_per_row=rows,
+                labels_per_column=cols,
+                label_width_mm=label_width,
+                label_height_mm=label_height,
+                page_width_mm=page_width,
+                page_height_mm=page_height,
+                font_size_pt=font_size,
+                font_family=font_family,
+                text_overflow=text_overflow,
+            ),
         )
     except ValueError as e:
         raise click.ClickException(f"Invalid configuration: {e}")
+
+    if save_config:
+        try:
+            saved_to = save_config_file(config, save_config)
+        except ValueError as e:
+            raise click.ClickException(str(e))
+        click.echo(f"Layout configuration saved to: {saved_to}")
 
     generator = LabelGenerator(config)
     generator.add_labels(labels)
