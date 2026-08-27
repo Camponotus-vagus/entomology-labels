@@ -13,11 +13,15 @@ from typing import Optional, Union
 from ..config import LABEL_PADDING_MM
 from ..label_generator import LabelGenerator
 from ..layout import (
+    STYLE_ATTRIBUTION,
     STYLE_CODE,
+    STYLE_COORDS,
     STYLE_DATE,
+    STYLE_ELEVATION,
     STYLE_INFO,
     STYLE_LOCATION,
     STYLE_SPACER,
+    STYLE_SPECIES,
     render_label_lines,
 )
 
@@ -30,6 +34,10 @@ HTML_STYLE_CLASSES = {
     STYLE_CODE: "code",
     STYLE_DATE: "date",
     STYLE_INFO: "additional-info",
+    STYLE_SPECIES: "species",
+    STYLE_COORDS: "coords",
+    STYLE_ELEVATION: "elevation",
+    STYLE_ATTRIBUTION: "attribution",
 }
 
 #: Number of body slots reserved per label so every cell has equal height.
@@ -215,6 +223,15 @@ def _generate_html_content(generator: LabelGenerator) -> str:
     .additional-info {{
         font-size: {config.font_size_pt * 0.9}pt;
         font-style: italic;
+    }}
+
+    .species {{
+        font-size: {config.font_size_pt}pt;
+        font-style: italic;
+    }}
+
+    .coords, .elevation, .attribution {{
+        font-size: {config.font_size_pt}pt;
     }}
 
     /* Print styles */

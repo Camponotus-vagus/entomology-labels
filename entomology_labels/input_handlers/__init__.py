@@ -487,6 +487,11 @@ def _dataframe_to_labels(df) -> List[Label]:
         "date": ["date", "collection_date", "data_raccolta", "data"],
         "additional_info": ["additional_info", "notes", "info", "note"],
         "count": ["count", "quantity", "copies", "n", "quantità", "quantita"],
+        "species": ["species", "taxon", "determination", "specie", "determinazione"],
+        "coordinates": ["coordinates", "coords", "latlon", "coordinate"],
+        "elevation": ["elevation", "altitude", "quota", "altitudine"],
+        "collector": ["collector", "leg", "legit", "raccoglitore"],
+        "determiner": ["determiner", "det", "determinatore"],
     }
 
     def find_column(possible_names):
@@ -510,11 +515,7 @@ def _dataframe_to_labels(df) -> List[Label]:
                     data[field] = str(value)
 
         label = Label(
-            location_line1=data.get("location_line1", ""),
-            location_line2=data.get("location_line2", ""),
-            code=data.get("code", ""),
-            date=data.get("date", ""),
-            additional_info=data.get("additional_info", ""),
+            **{name: data.get(name, "") for name in Label.CONTENT_FIELDS if name in data}
         )
 
         if not label.is_empty():

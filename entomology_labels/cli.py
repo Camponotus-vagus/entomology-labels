@@ -18,6 +18,7 @@ from .dates import normalize_date, validate_date
 from .fit import check_fit
 from .input_handlers import load_data
 from .label_generator import LabelConfig, LabelGenerator
+from .layout import KIND_LOCALITY, LABEL_KINDS, build_sheet
 from .output_generators import generate_docx, generate_html, generate_pdf
 
 # Setup logging
@@ -277,6 +278,13 @@ def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
     help=f"Handling for text too wide for a label (default: {_D.text_overflow})",
 )
 @click.option(
+    "--label-kind",
+    type=click.Choice(LABEL_KINDS),
+    default=KIND_LOCALITY,
+    help="Which labels to print: the locality label, the determination "
+    "label, or both (specimens conventionally carry both)",
+)
+@click.option(
     "--normalize-dates",
     is_flag=True,
     help="Rewrite recognised dates into the Roman-numeral label form",
@@ -302,6 +310,7 @@ def generate(
     font_size: Optional[float],
     font_family: Optional[str],
     text_overflow: Optional[str],
+    label_kind: str,
     normalize_dates: bool,
     strict_fit: bool,
     open_after: bool,
@@ -366,7 +375,7 @@ def generate(
         click.echo(f"Layout configuration saved to: {saved_to}")
 
     generator = LabelGenerator(config)
-    generator.add_labels(labels)
+    generator.add_labels(build_sheet(labels, label_kind))
 
     if verbose:
         click.echo(f"Configuration: {rows}x{cols} labels per page")

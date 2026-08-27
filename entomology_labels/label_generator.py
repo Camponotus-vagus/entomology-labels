@@ -8,7 +8,7 @@ import logging
 import math
 import re
 from dataclasses import dataclass, replace
-from typing import List, Optional
+from typing import ClassVar, List, Optional, Tuple
 
 from .config import (
     DEFAULT_TEXT_OVERFLOW,
@@ -212,14 +212,27 @@ class LabelConfig:
 
 @dataclass
 class Label:
-    """Represents a single entomology label.
+    """A single specimen label.
+
+    Fields hold text ready to print, not raw values: coordinates and elevation
+    arrive already formatted, so that the decision between 46.1873N and
+    46 deg 11' 14" N is made once, where the numbers are, rather than
+    separately in each renderer.
 
     Attributes:
-        location_line1: First line of location (e.g., "Italia, Trentino Alto Adige,")
-        location_line2: Second line of location (e.g., "Giustino (TN), Vedretta d'Amola")
-        code: Specimen code (e.g., "N1", "H2")
-        date: Collection date (optional)
-        additional_info: Any additional information (optional)
+        location_line1: Country and region, e.g. "Norway, Vestland,"
+        location_line2: Municipality and locality, e.g. "Bergen, Fløyen"
+        code: Specimen code, e.g. "N1"
+        date: Collection date, e.g. "20.viii.2026"
+        additional_info: Anything else worth recording (optional)
+        species: Taxon name, printed on the determination label (optional)
+        coordinates: Pre-formatted coordinates, e.g. "60.3965N 5.3531E" (optional)
+        elevation: Pre-formatted elevation, e.g. "310 m" (optional)
+        collector: Who collected it; printed as "leg. ..." (optional)
+        determiner: Who identified it; printed as "det. ..." (optional)
+        render_as: Which label this renders as, "locality" or "determination".
+            A display concern, not collection data, so it is left out of
+            to_dict() and ignored when deciding whether a label is empty.
     """
 
     location_line1: str = ""
@@ -227,47 +240,62 @@ class Label:
     code: str = ""
     date: str = ""
     additional_info: str = ""
+    species: str = ""
+    coordinates: str = ""
+    elevation: str = ""
+    collector: str = ""
+    determiner: str = ""
+    render_as: str = "locality"
+
+    #: Fields that carry collection data, as opposed to rendering state.
+    CONTENT_FIELDS: ClassVar[Tuple[str, ...]] = (
+        "location_line1",
+        "location_line2",
+        "code",
+        "date",
+        "additional_info",
+        "species",
+        "coordinates",
+        "elevation",
+        "collector",
+        "determiner",
+    )
 
     def __post_init__(self):
-        """Sanitize all string fields after initialization."""
-        self.location_line1 = _sanitize_string(self.location_line1)
-        self.location_line2 = _sanitize_string(self.location_line2)
-        self.code = _sanitize_string(self.code)
-        self.date = _sanitize_string(self.date)
-        self.additional_info = _sanitize_string(self.additional_info)
+        """Sanitize every text field after initialization."""
+        for name in self.CONTENT_FIELDS:
+            setattr(self, name, _sanitize_string(getattr(self, name)))
 
     def is_empty(self) -> bool:
         """Check if the label has no content."""
-        return not any(
-            [
-                self.location_line1.strip(),
-                self.location_line2.strip(),
-                self.code.strip(),
-                self.date.strip(),
-                self.additional_info.strip(),
-            ]
-        )
+        return not any(getattr(self, name).strip() for name in self.CONTENT_FIELDS)
 
     def to_dict(self) -> dict:
         """Convert label to dictionary."""
-        return {
-            "location_line1": self.location_line1,
-            "location_line2": self.location_line2,
-            "code": self.code,
-            "date": self.date,
-            "additional_info": self.additional_info,
-        }
+        return {name: getattr(self, name) for name in self.CONTENT_FIELDS}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Label":
-        """Create label from dictionary."""
-        return cls(
-            location_line1=str(data.get("location_line1", data.get("location1", ""))),
-            location_line2=str(data.get("location_line2", data.get("location2", ""))),
-            code=str(data.get("code", data.get("specimen_code", ""))),
-            date=str(data.get("date", data.get("collection_date", ""))),
-            additional_info=str(data.get("additional_info", data.get("notes", ""))),
-        )
+        """Create label from dictionary, accepting the usual field aliases."""
+        aliases = {
+            "location_line1": ("location_line1", "location1"),
+            "location_line2": ("location_line2", "location2"),
+            "code": ("code", "specimen_code"),
+            "date": ("date", "collection_date"),
+            "additional_info": ("additional_info", "notes"),
+            "species": ("species", "taxon"),
+            "coordinates": ("coordinates", "coords"),
+            "elevation": ("elevation", "altitude"),
+            "collector": ("collector", "leg"),
+            "determiner": ("determiner", "det"),
+        }
+        values = {}
+        for field_name, names in aliases.items():
+            for name in names:
+                if name in data and data[name] is not None:
+                    values[field_name] = str(data[name])
+                    break
+        return cls(**values)
 
 
 def expand_label(label: Label, count: int) -> List[Label]:
