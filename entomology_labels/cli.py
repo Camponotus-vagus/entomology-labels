@@ -14,6 +14,7 @@ import click
 from . import __version__
 from .config import LOG_FORMAT, LOG_LEVEL, TEXT_OVERFLOW_MODES
 from .config_io import resolve_config, save_config_file
+from .dates import normalize_date, validate_date
 from .fit import check_fit
 from .input_handlers import load_data
 from .label_generator import LabelConfig, LabelGenerator
@@ -174,6 +175,32 @@ def _load_labels(input_path: Path) -> list:
     return labels
 
 
+def _apply_dates(labels: list, *, normalize: bool = False) -> None:
+    """Warn about odd collection dates, and optionally rewrite them.
+
+    Rewriting is opt-in because the date field has always been free text:
+    plenty of real labels read "viii.2026" or "ex larva 2026", and silently
+    reformatting a file someone already prints from would be a surprise.
+
+    Args:
+        labels: The labels to inspect; modified in place when normalizing
+        normalize: Whether to rewrite recognised dates into the label form
+    """
+    reported = set()
+
+    for label in labels:
+        if not label.date:
+            continue
+
+        for warning in validate_date(label.date):
+            if warning not in reported:
+                reported.add(warning)
+                click.secho(f"warning: {warning}", err=True, fg="yellow")
+
+        if normalize:
+            label.date = normalize_date(label.date)
+
+
 def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
     """Print any fit warnings for a generator to stderr.
 
@@ -250,6 +277,11 @@ def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
     help=f"Handling for text too wide for a label (default: {_D.text_overflow})",
 )
 @click.option(
+    "--normalize-dates",
+    is_flag=True,
+    help="Rewrite recognised dates into the Roman-numeral label form",
+)
+@click.option(
     "--strict-fit",
     is_flag=True,
     help="Treat fit warnings as errors instead of printing them",
@@ -270,6 +302,7 @@ def generate(
     font_size: Optional[float],
     font_family: Optional[str],
     text_overflow: Optional[str],
+    normalize_dates: bool,
     strict_fit: bool,
     open_after: bool,
     verbose: bool,
@@ -299,6 +332,7 @@ def generate(
         click.echo(f"Loading data from: {input_path}")
 
     labels = _load_labels(input_path)
+    _apply_dates(labels, normalize=normalize_dates)
 
     if verbose:
         click.echo(f"Loaded {len(labels)} labels")
