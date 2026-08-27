@@ -5,7 +5,13 @@ A tool for generating professional entomology specimen labels with support for
 multiple input formats (Excel, CSV, TXT, DOCX, JSON) and output formats (HTML, PDF, DOCX).
 """
 
-__version__ = "1.0.0"
+try:  # pragma: no cover - trivial packaging shim
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
+
+    __version__ = _pkg_version("entomology-labels")
+except (ImportError, PackageNotFoundError):  # running from an uninstalled source tree
+    __version__ = "0.0.0.dev0"
 __author__ = "Entomology Labels Generator Contributors"
 
 from .input_handlers import load_data

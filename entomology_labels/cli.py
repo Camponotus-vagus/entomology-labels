@@ -10,6 +10,7 @@ from pathlib import Path
 
 import click
 
+from . import __version__
 from .config import LOG_FORMAT, LOG_LEVEL
 from .input_handlers import load_data
 from .label_generator import LabelConfig, LabelGenerator
@@ -91,7 +92,7 @@ def _write_output(generator, output_path: Path, open_after: bool) -> None:
 
 
 @click.group()
-@click.version_option(version="1.0.0", prog_name="entomology-labels")
+@click.version_option(version=__version__, prog_name="entomology-labels")
 def cli():
     """Entomology Labels Generator - Create professional specimen labels.
 
@@ -328,27 +329,27 @@ def template(output_file: str, file_format: str):
 
     example_data = [
         {
-            "location_line1": "Italia, Trentino Alto Adige,",
-            "location_line2": "Giustino (TN), Vedretta d'Amola",
+            "location_line1": "Norway, Vestland,",
+            "location_line2": "Bergen, Fl\u00f8yen",
             "code": "N1",
-            "date": "15.vi.2024",
+            "date": "20.viii.2026",
             "additional_info": "",
             "count": 1,
         },
         {
-            "location_line1": "Italia, Trentino Alto Adige,",
+            "location_line1": "Italy, Trentino-Alto Adige,",
             "location_line2": "Giustino (TN), Vedretta d'Amola",
-            "code": "N2",
+            "code": "A1",
             "date": "15.vi.2024",
             "additional_info": "",
             "count": 1,
         },
         {
-            "location_line1": "Italia, Lombardia,",
-            "location_line2": "Sondrio, Valmalenco",
-            "code": "H1",
-            "date": "20.vii.2024",
-            "additional_info": "leg. Rossi",
+            "location_line1": "Spain, Andaluc\u00eda,",
+            "location_line2": "Granada, Sierra Nevada",
+            "code": "G1",
+            "date": "02.vii.2025",
+            "additional_info": "leg. M. Rossi",
             "count": 3,
         },
     ]
