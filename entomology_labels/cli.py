@@ -12,10 +12,16 @@ from typing import Any, Dict, Optional
 import click
 
 from . import __version__
-from .config import LOG_FORMAT, LOG_LEVEL, TEXT_OVERFLOW_MODES
-from .config_io import resolve_config, save_config_file
+from .config import (
+    GEOCODE_CACHE_FILENAME,
+    LOG_FORMAT,
+    LOG_LEVEL,
+    TEXT_OVERFLOW_MODES,
+)
+from .config_io import resolve_config, save_config_file, user_config_path
 from .dates import normalize_date, to_roman_date, validate_date
 from .fit import check_fit
+from .geocoding import build_geocoder, suggest_for_events
 from .input_handlers import load_data
 from .label_generator import Label, LabelConfig, LabelGenerator
 from .layout import KIND_LOCALITY, LABEL_KINDS, build_sheet
@@ -187,6 +193,44 @@ def _load_labels(input_path: Path) -> list:
     return labels
 
 
+def _suggest_localities(events, geocoder_name: str, geonames_user: str) -> dict:
+    """Ask an online service to propose a locality for each site.
+
+    Args:
+        events: The collection events
+        geocoder_name: Which service to ask
+        geonames_user: GeoNames username, when that service is chosen
+
+    Returns:
+        Suggestions by event id; missing entries mean no suggestion
+
+    Raises:
+        click.ClickException: If the geocoder cannot be constructed
+    """
+    try:
+        geocoder = build_geocoder(
+            geocoder_name,
+            username=geonames_user,
+            cache_path=user_config_path().parent / GEOCODE_CACHE_FILENAME,
+        )
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+    click.echo(f"Asking {geocoder_name} for locality suggestions ({len(events)} lookup(s))...")
+    results = {
+        event_id: suggestion
+        for event_id, suggestion in suggest_for_events(events, geocoder)
+        if suggestion is not None
+    }
+
+    if results:
+        click.echo(geocoder.attribution)
+    else:
+        click.secho("No locality suggestions were returned.", fg="yellow")
+
+    return results
+
+
 def _validate_draft_path(output: str) -> Path:
     """Validate the destination for a draft site registry.
 
@@ -211,7 +255,14 @@ def _validate_draft_path(output: str) -> Path:
     return path
 
 
-def _write_site_draft(events, output_path: Path, *, read: int, skipped: int) -> None:
+def _write_site_draft(
+    events,
+    output_path: Path,
+    *,
+    read: int,
+    skipped: int,
+    suggestions: Optional[dict] = None,
+) -> None:
     """Write a draft site registry for the given collection events.
 
     Written with yaml.safe_dump rather than string formatting: a file name
@@ -223,6 +274,7 @@ def _write_site_draft(events, output_path: Path, *, read: int, skipped: int) -> 
         output_path: Where to write the draft
         read: How many photographs were read
         skipped: How many were skipped
+        suggestions: Locality proposals by event id, written as comments
 
     Raises:
         click.ClickException: If PyYAML is missing or the file cannot be written
@@ -234,8 +286,18 @@ def _write_site_draft(events, output_path: Path, *, read: int, skipped: int) -> 
 
     sites = {}
     notes = []
+    suggestions = suggestions or {}
     for event in events:
         sites[event.event_id] = event_to_site(event)
+
+        # A suggestion is written beside the field, not into it. The locality
+        # stays blank until a person confirms it: a wrong toponym silently
+        # inherited onto a museum label is worse than an obvious gap.
+        suggestion = suggestions.get(event.event_id)
+        if suggestion is not None:
+            notes.append(f"{event.event_id} suggested locality ({suggestion.source}):")
+            notes.append(f"    location_line1: {suggestion.location_line1!r}")
+            notes.append(f"    location_line2: {suggestion.location_line2!r}")
 
         detail = f"{event.event_id}: {len(event.photos)} photo(s)"
         if event.date:
@@ -857,7 +919,30 @@ def photos_probe(paths, limit: int):
     is_flag=True,
     help="Record whole paths rather than file names, which may expose your home directory",
 )
-def photos_scan(paths, output: str, time_gap: float, radius: float, full_paths: bool):
+@click.option(
+    "--geocode",
+    is_flag=True,
+    help="Ask an online service to suggest locality names. This sends each "
+    "site's coordinates to a third party; suggestions are written as "
+    "comments for you to confirm, never filled in automatically",
+)
+@click.option(
+    "--geocoder",
+    type=click.Choice(["nominatim", "geonames"]),
+    default="nominatim",
+    help="Which service to ask (default: nominatim)",
+)
+@click.option("--geonames-user", default="", help="GeoNames username, for that geocoder")
+def photos_scan(
+    paths,
+    output: str,
+    time_gap: float,
+    radius: float,
+    full_paths: bool,
+    geocode: bool,
+    geocoder: str,
+    geonames_user: str,
+):
     """Group photographs into collection sites and write a draft registry.
 
     The draft is a starting point, not a finished file: EXIF records where
@@ -878,7 +963,9 @@ def photos_scan(paths, output: str, time_gap: float, radius: float, full_paths: 
     if not events:
         raise click.ClickException("No photographs with usable metadata were found")
 
-    _write_site_draft(events, output_path, read=read, skipped=skipped)
+    suggestions = _suggest_localities(events, geocoder, geonames_user) if geocode else {}
+
+    _write_site_draft(events, output_path, read=read, skipped=skipped, suggestions=suggestions)
 
     click.echo(f"Read {read} photo(s)" + (f", skipped {skipped}" if skipped else ""))
     click.echo(f"Grouped into {len(events)} collection site(s):")

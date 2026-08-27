@@ -79,6 +79,15 @@ PHOTO_EXTENSIONS = (
     ".heic",
 )
 
+# Reverse geocoding. Locality lookups are opt-in; see geocoding.py for why.
+GEOCODE_TIMEOUT_S = 15.0
+# OSM's usage policy allows at most one request per second.
+GEOCODE_MIN_INTERVAL_S = 1.1
+# Decimal places used for the cache key: about 11 m, so re-running a scan
+# after a small change to the clustering does not re-query the service.
+GEOCODE_CACHE_PRECISION = 4
+GEOCODE_CACHE_FILENAME = "locality_cache.json"
+
 # File Paths
 DEFAULT_CONFIG_PATH = "label_config.json"
 
