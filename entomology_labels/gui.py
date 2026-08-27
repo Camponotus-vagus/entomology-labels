@@ -30,6 +30,7 @@ from .config import (
 )
 from .input_handlers import load_data
 from .label_generator import Label, LabelConfig, LabelGenerator
+from .layout import STYLE_SPACER, render_label_lines
 from .output_generators import generate_docx, generate_html, generate_pdf
 
 logger = logging.getLogger(__name__)
@@ -914,40 +915,27 @@ class EntomologyLabelsGUI:
                     content_frame = tk.Frame(l_frame, bg="white")
                     content_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
-                    tk.Label(
-                        content_frame,
-                        text=label.location_line1,
-                        font=(config.font_family, font_size),
-                        bg="white",
-                        anchor="w",
-                    ).pack(fill=tk.X)
-                    tk.Label(
-                        content_frame,
-                        text=label.location_line2,
-                        font=(config.font_family, font_size),
-                        bg="white",
-                        anchor="w",
-                    ).pack(fill=tk.X)
-                    tk.Label(
-                        content_frame,
-                        text="",
-                        font=(config.font_family, font_size // 2),
-                        bg="white",
-                    ).pack()  # Spacer
-                    tk.Label(
-                        content_frame,
-                        text=label.code,
-                        font=(config.font_family, font_size),
-                        bg="white",
-                        anchor="w",
-                    ).pack(fill=tk.X)
-                    tk.Label(
-                        content_frame,
-                        text=label.date,
-                        font=(config.font_family, font_size),
-                        bg="white",
-                        anchor="w",
-                    ).pack(fill=tk.X)
+                    for line in render_label_lines(label, config):
+                        if line.style == STYLE_SPACER:
+                            tk.Label(
+                                content_frame,
+                                text="",
+                                font=(config.font_family, font_size // 2),
+                                bg="white",
+                            ).pack()  # Spacer
+                            continue
+                        style = ("italic",) if line.italic else ()
+                        tk.Label(
+                            content_frame,
+                            text=line.text,
+                            font=(
+                                config.font_family,
+                                max(1, int(font_size * line.scale)),
+                                *style,
+                            ),
+                            bg="white",
+                            anchor="w",
+                        ).pack(fill=tk.X)
                 else:
                     # Empty cell
                     l_frame = tk.Frame(
