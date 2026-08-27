@@ -11,6 +11,7 @@ import tempfile
 import threading
 import tkinter as tk
 import webbrowser
+from collections import Counter
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
@@ -222,13 +223,13 @@ class EntomologyLabelsGUI:
         self.labels_tree.heading("location2", text="Location 2")
         self.labels_tree.heading("code", text="Code")
         self.labels_tree.heading("date", text="Date")
-        self.labels_tree.heading("quantity", text="Qty")
+        self.labels_tree.heading("quantity", text="Copies")
 
         self.labels_tree.column("location1", width=150)
         self.labels_tree.column("location2", width=150)
         self.labels_tree.column("code", width=70)
         self.labels_tree.column("date", width=90)
-        self.labels_tree.column("quantity", width=40)
+        self.labels_tree.column("quantity", width=55)
 
         # Scrollbar
         scrollbar = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=self.labels_tree.yview)
@@ -635,6 +636,11 @@ class EntomologyLabelsGUI:
             self._tree_page = new_page
             self._update_labels_tree()
 
+    @staticmethod
+    def _label_key(label) -> tuple:
+        """Return a hashable identity for a label, for counting duplicates."""
+        return tuple(sorted(label.to_dict().items()))
+
     def _update_labels_tree(self):
         """Update the labels treeview.
 
@@ -646,6 +652,12 @@ class EntomologyLabelsGUI:
         # Clear existing items
         for item in self.labels_tree.get_children():
             self.labels_tree.delete(item)
+
+        # A requested quantity is expanded into that many Label objects when
+        # the label is added, so there is no per-row quantity to read back.
+        # Counting identical labels recovers the same information, and unlike
+        # the hardcoded "1" this column used to show, it is true.
+        copies = Counter(self._label_key(label) for label in self.generator.labels)
 
         # Clamp the page in case labels were removed since the last refresh
         self._tree_page = max(0, min(self._tree_page, self._tree_page_count - 1))
@@ -666,7 +678,7 @@ class EntomologyLabelsGUI:
                     label.location_line2[:30] + ("..." if len(label.location_line2) > 30 else ""),
                     label.code,
                     label.date,
-                    "1",
+                    str(copies.get(self._label_key(label), 1)),
                 ),
             )
 
