@@ -1,326 +1,195 @@
-# Entomology Labels Generator
+# Entomology Labels
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Printable specimen labels for insect collections. Reads your collection data
+from a spreadsheet or a text file, lays it out many-to-a-sheet, and writes HTML,
+PDF or Word.
 
-Genera etichette professionali per specimen entomologici con supporto per molteplici formati di input e output.
+![A sheet of generated labels](docs/images/label-sheet.png)
 
-## Caratteristiche
+Labels are paired: a locality label, and a determination label to pin below it.
 
-- **Interfaccia Grafica (GUI)**: Interfaccia intuitiva per creare e gestire etichette
-- **Interfaccia Linea di Comando (CLI)**: Per automazione e scripting
-- **Formati di Input Multipli**: Excel (.xlsx, .xls), CSV, TXT, Word (.docx), JSON, YAML
-- **Formati di Output Multipli**: HTML, PDF, Word (.docx)
-- **Layout Configurabile**: 10x13 etichette per pagina (default A4), completamente personalizzabile
-- **Generazione Sequenziale**: Crea serie di etichette con codici incrementali (N1, N2, N3...)
-
-## Formato Etichetta
-
-Ogni etichetta contiene:
-```
-Italia, Trentino Alto Adige,        ← Riga 1: Località principale
-Giustino (TN), Vedretta d'Amola     ← Riga 2: Località secondaria
-                                     ← Riga vuota
-N1                                   ← Codice specimen
-15.vi.2024                          ← Data raccolta
-```
-
-## Installazione
-
-### Opzione 1: pip (consigliato)
+## Install
 
 ```bash
-# Installazione base
-pip install entomology-labels
-
-# Con supporto completo (tutti i formati)
-pip install entomology-labels[all]
+pip install 'entomology-labels[all]'
 ```
 
-### Opzione 2: Da sorgente
+The `[all]` extra pulls in Excel, Word, PDF and photo-metadata support. Install
+the bare package if you only need HTML and CSV. PDF output needs system
+libraries for weasyprint; if that is awkward, generate HTML and print it from a
+browser instead.
+
+## Print some labels
 
 ```bash
-git clone https://github.com/Camponotus-vagus/entomology-labels.git
-cd entomology-labels
-pip install -e .[all]
+entomology-labels template my_labels.csv --format csv   # a file to fill in
+entomology-labels generate my_labels.csv -o labels.html --preset museum
 ```
 
-### Dipendenze Opzionali
+Open the HTML and print it, with margins set to none.
 
-| Feature | Pacchetti | Installazione |
-|---------|-----------|---------------|
-| Excel | pandas, openpyxl | `pip install entomology-labels[excel]` |
-| Word | python-docx | `pip install entomology-labels[docx]` |
-| PDF | weasyprint | `pip install entomology-labels[pdf]` |
-| YAML | pyyaml | `pip install entomology-labels[yaml]` |
-| Tutto | - | `pip install entomology-labels[all]` |
+A row looks like this:
 
-> **Nota**: Per la generazione PDF, weasyprint richiede dipendenze di sistema aggiuntive. Consulta la [documentazione weasyprint](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html).
+```csv
+location_line1,location_line2,code,date,count
+"Norway, Vestland,","Bergen, Fløyen",N1,20.viii.2026,5
+```
 
-## Utilizzo
+`count` prints that many copies. Dates use the entomological convention of a
+Roman-numeral month — `20.viii.2026` — which avoids the day/month ambiguity of
+all-numeric dates. Excel, JSON, YAML, tab-separated text and Word tables all
+work as input; column headings are matched loosely, and the Italian headings
+older files use are still accepted.
 
-### Interfaccia Grafica (GUI)
+## From field photographs
+
+If your camera geotags, it already recorded when and where you collected.
+
+```bash
+entomology-labels photos probe ~/Pictures/2026-08-20      # check what it reads
+entomology-labels photos scan ~/Pictures/2026-08-20 -o sites.yaml
+```
+
+`scan` groups photographs into collection sites by time and distance — forty
+frames from one morning become one site — and writes a draft with the dates and
+coordinates filled in. Fill in the place names, add your specimen codes, then
+generate from it. Raw formats work; ORF, NEF, CR2 and DNG are read directly.
+
+Add `--geocode` and it will suggest place names from OpenStreetMap. Suggestions
+are written as comments for you to confirm, never filled in automatically. It is
+off by default because it sends your coordinates to a third party, which is your
+call to make each time.
+
+## Declare a site once
+
+Repeating a locality on every row is tedious and hard to correct. Declare it
+once instead:
+
+```yaml
+defaults:
+  collector: "F. Mensa"
+
+sites:
+  FLOYEN:
+    location_line1: "Norway, Vestland,"
+    location_line2: "Bergen, Fløyen"
+    coordinates: {lat: 60.3964, lon: 5.3531}
+    elevation_m: 293
+    date: 2026-08-20        # ISO in, 20.viii.2026 on the label
+
+labels:
+  - {site: FLOYEN, code: N1, species: "Myrmica sp.", count: 5}
+  - {site: FLOYEN, code: N2, count: 3}
+  - {site: FLOYEN, code: N3, date: 21.viii.2026}   # same site, next day
+```
+
+Values resolve row first, then site, then defaults. A row with no `site:` still
+works, so existing flat files need no changes. For CSV, keep the sites in their
+own file and pass `--sites sites.yaml`.
+
+See `examples/example_sites.yaml` for a complete one.
+
+## Label size
+
+```bash
+entomology-labels presets
+```
+
+| Preset | Size | Per A4 sheet |
+|---|---|---|
+| `museum` | 15.2 × 8.1 mm, 4 pt | 475 |
+| `museum-wide` | 17.8 × 12.3 mm, 4 pt | 272 |
+| `readable` | 24 × 15.5 mm, 5 pt | 156 |
+| `legacy` | 29 × 13 mm, 6 pt | 160 |
+
+The smaller sizes follow published guidance from entomological collections,
+which recommends labels around 15–18 mm wide in 4 pt type. `museum-wide` leaves
+room for coordinates and elevation; `museum` fits the classic five-line locality
+label. `legacy` reproduces this tool's original geometry, for reprinting old
+sheets.
+
+Individual settings override a preset:
+
+```bash
+entomology-labels generate data.csv -o labels.html --preset museum --font-size 5
+```
+
+Save a layout you like and reuse it:
+
+```bash
+entomology-labels generate data.csv -o labels.html --preset museum --save-config sheet.json
+entomology-labels generate more.csv -o more.html --config sheet.json
+```
+
+A `label_config.json` in the working directory is picked up automatically.
+
+## Warnings
+
+Before writing output, the tool checks that the labels fit and says so if they
+do not:
+
+```
+warning: label 1: 9 lines at 6.0pt need about 21.0mm, but the label is only
+         13.0mm tall; lower lines will be cut off
+warning: label 16: "Italy, Trentino-Alto Adige," is about 31.4mm wide and will
+         wrap onto another line at 27.0mm
+```
+
+Overlong text wraps by default rather than being trimmed, so nothing is lost
+silently. `--text-overflow clip` restores the old behaviour. `--strict-fit`
+turns these warnings into a non-zero exit.
+
+## Graphical interface
 
 ```bash
 entomology-labels-gui
 ```
 
-O da Python:
+![The label list](docs/images/gui-data.png)
+
+Import a file or type labels in, then check the preview before printing.
+
+![The layout preview](docs/images/gui-preview.png)
+
+## Fields
+
+| Field | Prints as | Notes |
+|---|---|---|
+| `location_line1` | first line | country, region |
+| `location_line2` | second line | municipality, locality |
+| `coordinates` | `60.3964N 5.3531E` | from a site, or written out |
+| `elevation` | `290 m` | |
+| `code` | `N1` | your specimen number |
+| `date` | `20.viii.2026` | |
+| `collector` | `leg. F. Mensa` | |
+| `species` | italic | goes on the determination label |
+| `determiner` | `det. F. Mensa` | goes on the determination label |
+| `additional_info` | italic, smaller | habitat, method, anything else |
+
+`--label-kind` chooses which labels to print: `locality` (default),
+`determination`, or `both`.
+
+## Python
 
 ```python
-from entomology_labels.gui import main
-main()
+from entomology_labels import Label, LabelConfig, LabelGenerator, load_data, generate_html
+from entomology_labels.presets import get_preset
+
+generator = LabelGenerator(LabelConfig(**get_preset("museum")))
+generator.add_labels(load_data("specimens.csv"))
+generate_html(generator, "labels.html")
 ```
 
-La GUI permette di:
-- Aggiungere etichette manualmente
-- Importare dati da file
-- Configurare layout e dimensioni
-- Visualizzare anteprima
-- Esportare in HTML, PDF, DOCX
+`entomology-labels info` lists the accepted input formats and column names.
 
-### Linea di Comando (CLI)
+## Contributing
 
-```bash
-# Genera etichette da file Excel a HTML
-entomology-labels generate dati.xlsx -o etichette.html
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports are welcome, especially
+labels that print wrong — include the input file and the command you ran.
 
-# Genera etichette da CSV a PDF
-entomology-labels generate dati.csv -o etichette.pdf
+## Licence
 
-# Genera etichette da JSON a Word
-entomology-labels generate dati.json -o etichette.docx
+MIT. See [LICENSE](LICENSE).
 
-# Con layout personalizzato
-entomology-labels generate dati.xlsx -o etichette.html --rows 12 --cols 15
-
-# Apri il file dopo la generazione
-entomology-labels generate dati.xlsx -o etichette.html --open
-```
-
-#### Generazione Sequenziale
-
-```bash
-entomology-labels sequence \
-  --location1 "Italia, Trentino Alto Adige," \
-  --location2 "Giustino (TN), Vedretta d'Amola" \
-  --prefix N --start 1 --end 50 \
-  --date "15.vi.2024" \
-  -o etichette.html
-```
-
-#### Creare Template
-
-```bash
-# Crea template JSON
-entomology-labels template miei_dati.json
-
-# Crea template Excel
-entomology-labels template miei_dati.xlsx --format excel
-
-# Crea template CSV
-entomology-labels template miei_dati.csv --format csv
-```
-
-### API Python
-
-```python
-from entomology_labels import LabelGenerator, Label, LabelConfig
-from entomology_labels import load_data, generate_html, generate_pdf, generate_docx
-
-# Configurazione layout
-config = LabelConfig(
-    labels_per_row=10,
-    labels_per_column=13,
-    font_size_pt=6,
-)
-
-# Crea generatore
-generator = LabelGenerator(config)
-
-# Aggiungi etichette manualmente
-label = Label(
-    location_line1="Italia, Trentino Alto Adige,",
-    location_line2="Giustino (TN), Vedretta d'Amola",
-    code="N1",
-    date="15.vi.2024"
-)
-generator.add_label(label)
-
-# Oppure carica da file
-labels = load_data("dati.xlsx")
-generator.add_labels(labels)
-
-# Genera output
-generate_html(generator, "etichette.html", open_in_browser=True)
-generate_pdf(generator, "etichette.pdf")
-generate_docx(generator, "etichette.docx")
-```
-
-#### Generazione Sequenziale
-
-```python
-from entomology_labels import LabelGenerator
-
-generator = LabelGenerator()
-
-# Genera N1 fino a N50
-labels = generator.generate_sequential_labels(
-    location_line1="Italia, Trentino Alto Adige,",
-    location_line2="Giustino (TN), Vedretta d'Amola",
-    code_prefix="N",
-    start_number=1,
-    end_number=50,
-    date="15.vi.2024"
-)
-generator.add_labels(labels)
-```
-
-## Formati File di Input
-
-### Excel (.xlsx, .xls)
-
-Crea un foglio con le colonne:
-
-| location_line1 | location_line2 | code | date | count |
-|----------------|----------------|------|------|-------|
-| Italia, Trentino Alto Adige, | Giustino (TN), Vedretta d'Amola | N1 | 15.vi.2024 | 5 |
-| Italia, Lombardia, | Sondrio, Valmalenco | O1 | 20.vii.2024 | 3 |
-
-La colonna `count` è opzionale e serve per duplicare le etichette.
-
-### CSV
-
-```csv
-location_line1,location_line2,code,date,count
-"Italia, Trentino Alto Adige,","Giustino (TN), Vedretta d'Amola",N1,15.vi.2024,5
-"Italia, Lombardia,","Sondrio, Valmalenco",O1,20.vii.2024,3
-```
-
-### JSON
-
-```json
-{
-  "labels": [
-    {
-      "location_line1": "Italia, Trentino Alto Adige,",
-      "location_line2": "Giustino (TN), Vedretta d'Amola",
-      "code": "N1",
-      "date": "15.vi.2024",
-      "count": 5
-    }
-  ]
-}
-```
-
-### TXT (formato chiave-valore)
-
-```
-location1: Italia, Trentino Alto Adige,
-location2: Giustino (TN), Vedretta d'Amola
-code: N1
-date: 15.vi.2024
-count: 5
-
-location1: Italia, Lombardia,
-location2: Sondrio, Valmalenco
-code: O1
-date: 20.vii.2024
-count: 3
-```
-
-### Nomi Colonne Alternativi
-
-Il software riconosce vari nomi per le colonne:
-
-| Campo | Nomi accettati |
-|-------|----------------|
-| location_line1 | location1, località1, location, loc1 |
-| location_line2 | location2, località2, loc2 |
-| code | specimen_code, codice, id |
-| date | collection_date, data, data_raccolta |
-| count | quantity, quantità, n, copies |
-
-## Configurazione Layout
-
-### Parametri Disponibili
-
-| Parametro | Default | Descrizione |
-|-----------|---------|-------------|
-| labels_per_row | 10 | Etichette per riga |
-| labels_per_column | 13 | Etichette per colonna |
-| label_width_mm | 21.0 | Larghezza etichetta (mm) |
-| label_height_mm | 22.85 | Altezza etichetta (mm) |
-| page_width_mm | 210.0 | Larghezza pagina (mm) |
-| page_height_mm | 297.0 | Altezza pagina (mm) |
-| font_size_pt | 6.0 | Dimensione font (pt) |
-| font_family | Arial | Famiglia font |
-
-### Preimpostazioni
-
-- **A4 Standard**: 10x13 etichette (130 per pagina)
-- **A4 Compatto**: 12x15 etichette (180 per pagina)
-- **Letter US**: 10x12 etichette (120 per pagina)
-
-## Output HTML e Stampa PDF
-
-L'output HTML include un pulsante "Stampa" che apre la finestra di stampa del browser. Per salvare come PDF:
-
-1. Genera il file HTML
-2. Aprilo nel browser
-3. Clicca "Stampa" o usa Ctrl+P (Cmd+P su Mac)
-4. Seleziona "Salva come PDF" come destinazione
-5. Assicurati che i margini siano impostati su "Nessuno"
-
-## Esempi
-
-La cartella `examples/` contiene file di esempio:
-
-- `example_labels.json` - Formato JSON
-- `example_labels.csv` - Formato CSV
-- `example_labels.txt` - Formato TXT
-
-## Risoluzione Problemi
-
-### Errore "weasyprint not found"
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
-
-# macOS
-brew install pango
-
-# Poi installa weasyprint
-pip install weasyprint
-```
-
-### Errore "pandas not found"
-
-```bash
-pip install pandas openpyxl
-```
-
-### Le etichette non si allineano correttamente
-
-- Verifica che i margini della stampante siano impostati su 0
-- Usa la modalità "Adatta alla pagina" se necessario
-- Prova a regolare i parametri `margin_*` nella configurazione
-
-## Contribuire
-
-Contributi sono benvenuti! Per contribuire:
-
-1. Fork del repository
-2. Crea un branch per la feature (`git checkout -b feature/NuovaFeature`)
-3. Commit delle modifiche (`git commit -m 'Aggiunge NuovaFeature'`)
-4. Push al branch (`git push origin feature/NuovaFeature`)
-5. Apri una Pull Request
-
-## Licenza
-
-Questo progetto è rilasciato sotto licenza MIT. Vedi il file [LICENSE](LICENSE) per i dettagli.
-
-## Crediti
-
-Ispirato da [insect-labels](https://github.com/tracyyao27/insect-labels) di Tracy Yao.
+Inspired by [insect-labels](https://github.com/tracyyao27/insect-labels) by
+Tracy Yao.
