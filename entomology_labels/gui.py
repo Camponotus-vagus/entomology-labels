@@ -29,7 +29,7 @@ from .config import (
     PREVIEW_SCALE_FACTOR,
 )
 from .input_handlers import load_data
-from .label_generator import Label, LabelConfig, LabelGenerator
+from .label_generator import Label, LabelConfig, LabelGenerator, expand_label
 from .layout import STYLE_SPACER, render_label_lines
 from .output_generators import generate_docx, generate_html, generate_pdf
 
@@ -485,16 +485,7 @@ class EntomologyLabelsGUI:
             messagebox.showwarning("Warning", "Please fill at least one field for the label.")
             return
 
-        copies = [
-            Label(
-                location_line1=label.location_line1,
-                location_line2=label.location_line2,
-                code=label.code,
-                date=label.date,
-                additional_info=label.additional_info,
-            )
-            for _ in range(quantity)
-        ]
+        copies = expand_label(label, quantity)
 
         editing_index = self._editing_index
         if editing_index is not None and editing_index < len(self.generator.labels):

@@ -3,7 +3,12 @@
 import pytest
 
 from entomology_labels.config import MAX_SEQUENTIAL_LABELS
-from entomology_labels.label_generator import Label, LabelConfig, LabelGenerator
+from entomology_labels.label_generator import (
+    Label,
+    LabelConfig,
+    LabelGenerator,
+    expand_label,
+)
 
 
 class TestLabel:
@@ -234,3 +239,47 @@ class TestLabelConfigBounds:
     def test_rejects_invalid_orientation(self):
         with pytest.raises(ValueError, match="orientation must be"):
             LabelConfig(orientation="diagonal")
+
+
+class TestExpandLabel:
+    """Copies must carry every field, including ones added later."""
+
+    def test_produces_the_requested_number_of_copies(self):
+        label = Label(location_line1="Norway, Vestland,", code="N1")
+
+        copies = expand_label(label, 3)
+
+        assert len(copies) == 3
+        assert all(c.code == "N1" for c in copies)
+
+    def test_copies_are_independent_objects(self):
+        label = Label(code="N1")
+
+        first, second = expand_label(label, 2)
+        first.code = "CHANGED"
+
+        assert second.code == "N1"
+        assert label.code == "N1"
+
+    def test_carries_every_field_without_naming_them(self):
+        """A hand-written copy that enumerates fields drops any new one."""
+        label = Label(
+            location_line1="Norway, Vestland,",
+            location_line2="Bergen, Floyen",
+            code="N1",
+            date="20.viii.2026",
+            additional_info="leg. F. Mensa",
+        )
+
+        (copy,) = expand_label(label, 1)
+
+        assert copy.to_dict() == label.to_dict()
+
+    def test_non_positive_count_yields_nothing(self):
+        assert expand_label(Label(code="N1"), 0) == []
+
+    def test_generator_method_delegates_to_the_helper(self):
+        generator = LabelGenerator()
+        label = Label(code="N1", additional_info="leg. F. Mensa")
+
+        assert generator.expand_label(label, 2) == expand_label(label, 2)

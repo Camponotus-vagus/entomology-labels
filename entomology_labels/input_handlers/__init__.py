@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Union
 
 from ..config import MAX_COPIES_PER_ENTRY, MAX_FILE_SIZE_BYTES
-from ..label_generator import Label
+from ..label_generator import Label, expand_label
 
 logger = logging.getLogger(__name__)
 
@@ -284,18 +284,7 @@ def _parse_key_value_txt(content: str) -> List[Label]:
 
             # Handle count/quantity for duplicates
             count = _parse_count(data.get("count", data.get("quantity", data.get("quantità", 1))))
-            labels.extend(
-                [
-                    Label(
-                        location_line1=label.location_line1,
-                        location_line2=label.location_line2,
-                        code=label.code,
-                        date=label.date,
-                        additional_info=label.additional_info,
-                    )
-                    for _ in range(count)
-                ]
-            )
+            labels.extend(expand_label(label, count))
 
     return labels
 
@@ -427,18 +416,7 @@ def load_json(file_path: Path) -> List[Label]:
     for item in items:
         label = Label.from_dict(item)
         count = _parse_count(item.get("count", item.get("quantity", 1)))
-        labels.extend(
-            [
-                Label(
-                    location_line1=label.location_line1,
-                    location_line2=label.location_line2,
-                    code=label.code,
-                    date=label.date,
-                    additional_info=label.additional_info,
-                )
-                for _ in range(count)
-            ]
-        )
+        labels.extend(expand_label(label, count))
 
     return labels
 
@@ -467,18 +445,7 @@ def load_yaml(file_path: Path) -> List[Label]:
     for item in items:
         label = Label.from_dict(item)
         count = _parse_count(item.get("count", item.get("quantity", 1)))
-        labels.extend(
-            [
-                Label(
-                    location_line1=label.location_line1,
-                    location_line2=label.location_line2,
-                    code=label.code,
-                    date=label.date,
-                    additional_info=label.additional_info,
-                )
-                for _ in range(count)
-            ]
-        )
+        labels.extend(expand_label(label, count))
 
     return labels
 
@@ -529,17 +496,6 @@ def _dataframe_to_labels(df) -> List[Label]:
         if not label.is_empty():
             count = _parse_count(data.get("count"))
 
-            labels.extend(
-                [
-                    Label(
-                        location_line1=label.location_line1,
-                        location_line2=label.location_line2,
-                        code=label.code,
-                        date=label.date,
-                        additional_info=label.additional_info,
-                    )
-                    for _ in range(count)
-                ]
-            )
+            labels.extend(expand_label(label, count))
 
     return labels

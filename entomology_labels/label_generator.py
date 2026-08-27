@@ -7,7 +7,7 @@ Handles the generation of entomology labels with configurable dimensions and lay
 import logging
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import List, Optional
 
 from .config import (
@@ -257,6 +257,23 @@ class Label:
         )
 
 
+def expand_label(label: Label, count: int) -> List[Label]:
+    """Return ``count`` independent copies of ``label``.
+
+    Uses dataclasses.replace so that every field is carried over, including
+    any added later. Hand-written copies that enumerate the fields silently
+    drop new ones, which is why this lives in exactly one place.
+
+    Args:
+        label: The label to duplicate
+        count: Number of copies to produce
+
+    Returns:
+        A list of independent copies; empty when count is not positive
+    """
+    return [replace(label) for _ in range(count)]
+
+
 class LabelGenerator:
     """Generator for entomology labels.
 
@@ -361,16 +378,7 @@ class LabelGenerator:
         Returns:
             List of label copies
         """
-        return [
-            Label(
-                location_line1=label.location_line1,
-                location_line2=label.location_line2,
-                code=label.code,
-                date=label.date,
-                additional_info=label.additional_info,
-            )
-            for _ in range(count)
-        ]
+        return expand_label(label, count)
 
     def generate_sequential_labels(
         self,
