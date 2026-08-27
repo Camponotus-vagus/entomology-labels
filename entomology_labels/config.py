@@ -58,6 +58,27 @@ LONGITUDE_MAX = 180.0
 ELEVATION_M_MIN = -500.0
 ELEVATION_M_MAX = 9000.0
 
+# Photo metadata scanning. These are separate from MAX_FILE_SIZE_BYTES on
+# purpose: a raw frame is legitimately far larger than any label data file,
+# so the two limits guard different things and are tuned differently.
+MAX_PHOTO_SIZE_BYTES = 200 * 1024 * 1024  # A raw frame; TG-7 ORFs run 15-25MB
+MAX_PHOTOS_PER_SCAN = 5000  # Bound on a single directory walk
+MAX_EXIF_STRING_LEN = 200  # Camera-written text reaches a printed label
+PHOTO_EXTENSIONS = (
+    ".orf",
+    ".jpg",
+    ".jpeg",
+    ".tif",
+    ".tiff",
+    ".dng",
+    ".cr2",
+    ".cr3",
+    ".nef",
+    ".arw",
+    ".rw2",
+    ".heic",
+)
+
 # File Paths
 DEFAULT_CONFIG_PATH = "label_config.json"
 

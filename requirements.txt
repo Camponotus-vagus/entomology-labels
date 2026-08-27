@@ -21,3 +21,6 @@ pyyaml>=6.0
 # Without it, HTML and DOCX output still work and PDF export reports a clear
 # error telling you to install it.
 weasyprint>=57.0
+
+# Photo EXIF support (optional)
+exifread>=3.0
