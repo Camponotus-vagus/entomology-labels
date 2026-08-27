@@ -43,6 +43,21 @@ TEXT_WIDTH_WARN_RATIO = 0.9
 TEXT_OVERFLOW_MODES = ("wrap", "clip", "shrink")
 DEFAULT_TEXT_OVERFLOW = "wrap"
 
+# Collection sites
+MAX_SITES = 1000  # Maximum sites a single input file may declare
+# Site ids appear in error messages and file keys; keep them plain.
+SITE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,32}$"
+
+# Geographic bounds. Coordinates come from photo metadata and hand-typed
+# files alike, so both need checking before they reach a museum label.
+LATITUDE_MIN = -90.0
+LATITUDE_MAX = 90.0
+LONGITUDE_MIN = -180.0
+LONGITUDE_MAX = 180.0
+# Roughly the Dead Sea shore to above Everest, with room to spare.
+ELEVATION_M_MIN = -500.0
+ELEVATION_M_MAX = 9000.0
+
 # File Paths
 DEFAULT_CONFIG_PATH = "label_config.json"
 

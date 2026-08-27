@@ -8,10 +8,11 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Union
+from typing import Any, List, Mapping, Union
 
 from ..config import MAX_COPIES_PER_ENTRY, MAX_FILE_SIZE_BYTES
 from ..label_generator import Label, expand_label
+from ..sites import has_sites, labels_from_rows, parse_sites
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +389,54 @@ def load_docx(file_path: Path) -> List[Label]:
     return labels
 
 
+def _structured_to_labels(data: Any, items: Any) -> List[Label]:
+    """Build labels from a parsed JSON or YAML document.
+
+    Handles both shapes with one code path: the long-standing flat list of
+    label rows, and the newer form where a file declares reusable sites and
+    defaults. A file with no ``sites:`` or ``defaults:`` key takes exactly the
+    old path, so existing files are unaffected.
+
+    Args:
+        data: The whole parsed document
+        items: The label rows extracted from it
+
+    Returns:
+        Labels, with count/quantity already expanded
+
+    Raises:
+        ValueError: If a row names a site the file does not declare
+    """
+    if has_sites(data):
+        sites = parse_sites(data.get("sites"))
+        defaults = data.get("defaults") or {}
+        if not isinstance(defaults, dict):
+            raise ValueError("'defaults' must be a mapping of field to value")
+        resolved = labels_from_rows(items, sites, defaults)
+        counts = [_parse_count(_row_count(row, defaults)) for row in items if isinstance(row, dict)]
+    else:
+        resolved = [Label.from_dict(item) for item in items]
+        counts = [_parse_count(_row_count(row, {})) for row in items]
+
+    labels: List[Label] = []
+    for label, count in zip(resolved, counts):
+        labels.extend(expand_label(label, count))
+    return labels
+
+
+def _row_count(row: Any, defaults: Mapping[str, Any]) -> Any:
+    """Return the copy count for a row, falling back to the file defaults."""
+    if not isinstance(row, dict):
+        return 1
+    for key in ("count", "quantity"):
+        if row.get(key) is not None:
+            return row[key]
+    for key in ("count", "quantity"):
+        if defaults.get(key) is not None:
+            return defaults[key]
+    return 1
+
+
 def load_json(file_path: Path) -> List[Label]:
     """Load labels from a JSON file.
 
@@ -419,13 +468,7 @@ def load_json(file_path: Path) -> List[Label]:
     else:
         items = data
 
-    labels = []
-    for item in items:
-        label = Label.from_dict(item)
-        count = _parse_count(item.get("count", item.get("quantity", 1)))
-        labels.extend(expand_label(label, count))
-
-    return labels
+    return _structured_to_labels(data, items)
 
 
 def load_yaml(file_path: Path) -> List[Label]:
@@ -448,13 +491,7 @@ def load_yaml(file_path: Path) -> List[Label]:
     else:
         items = data
 
-    labels = []
-    for item in items:
-        label = Label.from_dict(item)
-        count = _parse_count(item.get("count", item.get("quantity", 1)))
-        labels.extend(expand_label(label, count))
-
-    return labels
+    return _structured_to_labels(data, items)
 
 
 def _dataframe_to_labels(df) -> List[Label]:
@@ -492,6 +529,7 @@ def _dataframe_to_labels(df) -> List[Label]:
         "elevation": ["elevation", "altitude", "quota", "altitudine"],
         "collector": ["collector", "leg", "legit", "raccoglitore"],
         "determiner": ["determiner", "det", "determinatore"],
+        "site": ["site", "site_id", "sito"],
     }
 
     def find_column(possible_names):
@@ -514,9 +552,7 @@ def _dataframe_to_labels(df) -> List[Label]:
                 else:
                     data[field] = str(value)
 
-        label = Label(
-            **{name: data.get(name, "") for name in Label.CONTENT_FIELDS if name in data}
-        )
+        label = Label(**{name: data.get(name, "") for name in Label.CONTENT_FIELDS if name in data})
 
         if not label.is_empty():
             count = _parse_count(data.get("count"))

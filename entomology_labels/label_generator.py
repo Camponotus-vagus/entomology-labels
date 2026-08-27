@@ -230,6 +230,8 @@ class Label:
         elevation: Pre-formatted elevation, e.g. "310 m" (optional)
         collector: Who collected it; printed as "leg. ..." (optional)
         determiner: Who identified it; printed as "det. ..." (optional)
+        site: Id of the collection site this label refers to. A reference,
+            not printed text; resolved against a site registry (optional)
         render_as: Which label this renders as, "locality" or "determination".
             A display concern, not collection data, so it is left out of
             to_dict() and ignored when deciding whether a label is empty.
@@ -245,6 +247,7 @@ class Label:
     elevation: str = ""
     collector: str = ""
     determiner: str = ""
+    site: str = ""
     render_as: str = "locality"
 
     #: Fields that carry collection data, as opposed to rendering state.
@@ -259,6 +262,7 @@ class Label:
         "elevation",
         "collector",
         "determiner",
+        "site",
     )
 
     def __post_init__(self):
@@ -288,6 +292,7 @@ class Label:
             "elevation": ("elevation", "altitude"),
             "collector": ("collector", "leg"),
             "determiner": ("determiner", "det"),
+            "site": ("site", "site_id"),
         }
         values = {}
         for field_name, names in aliases.items():

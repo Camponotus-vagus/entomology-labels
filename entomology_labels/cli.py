@@ -17,9 +17,10 @@ from .config_io import resolve_config, save_config_file
 from .dates import normalize_date, validate_date
 from .fit import check_fit
 from .input_handlers import load_data
-from .label_generator import LabelConfig, LabelGenerator
+from .label_generator import Label, LabelConfig, LabelGenerator
 from .layout import KIND_LOCALITY, LABEL_KINDS, build_sheet
 from .output_generators import generate_docx, generate_html, generate_pdf
+from .sites import load_site_registry, resolve_row
 
 # Setup logging
 logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
@@ -176,6 +177,38 @@ def _load_labels(input_path: Path) -> list:
     return labels
 
 
+def _apply_sites(labels: list, sites_path: Path) -> list:
+    """Resolve a tabular file's site column against an external site registry.
+
+    CSV and Excel have nowhere to put a sites block, so the registry lives in
+    its own YAML or JSON file and the table carries a `site` column.
+
+    Args:
+        labels: Labels loaded from the tabular file
+        sites_path: Path to the site registry
+
+    Returns:
+        The labels with their site's details filled in
+
+    Raises:
+        click.ClickException: If the registry cannot be read or a site is unknown
+    """
+    try:
+        sites = load_site_registry(sites_path)
+    except ValueError as e:
+        raise click.ClickException(f"Cannot read sites file: {e}")
+
+    resolved = []
+    for index, label in enumerate(labels):
+        row = {k: v for k, v in label.to_dict().items() if v}
+        try:
+            resolved.append(Label.from_dict(resolve_row(row, sites)))
+        except ValueError as e:
+            raise click.ClickException(f"row {index + 1}: {e}")
+
+    return resolved
+
+
 def _apply_dates(labels: list, *, normalize: bool = False) -> None:
     """Warn about odd collection dates, and optionally rewrite them.
 
@@ -233,6 +266,12 @@ def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("-o", "--output", required=True, help="Output file path (.html, .pdf, or .docx)")
 @click.option("--config", "config_path", type=click.Path(), help="Layout configuration file")
+@click.option(
+    "--sites",
+    "sites_path",
+    type=click.Path(exists=True),
+    help="Site registry to resolve a tabular file's site column against",
+)
 @click.option("--save-config", type=click.Path(), help="Write the effective layout to a file")
 @click.option(
     "--rows", default=None, type=int, help=f"Labels per row (default: {_D.labels_per_row})"
@@ -300,6 +339,7 @@ def generate(
     input_file: str,
     output: str,
     config_path: Optional[str],
+    sites_path: Optional[str],
     save_config: Optional[str],
     rows: Optional[int],
     cols: Optional[int],
@@ -341,6 +381,8 @@ def generate(
         click.echo(f"Loading data from: {input_path}")
 
     labels = _load_labels(input_path)
+    if sites_path:
+        labels = _apply_sites(labels, Path(sites_path))
     _apply_dates(labels, normalize=normalize_dates)
 
     if verbose:
