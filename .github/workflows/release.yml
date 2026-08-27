@@ -70,6 +70,15 @@ jobs:
             --hidden-import entomology_labels.label_generator \
             --hidden-import entomology_labels.input_handlers \
             --hidden-import entomology_labels.output_generators \
+            --hidden-import entomology_labels.config \
+            --hidden-import entomology_labels.config_io \
+            --hidden-import entomology_labels.dates \
+            --hidden-import entomology_labels.fit \
+            --hidden-import entomology_labels.geocoding \
+            --hidden-import entomology_labels.layout \
+            --hidden-import entomology_labels.photos \
+            --hidden-import entomology_labels.presets \
+            --hidden-import entomology_labels.sites \
             scripts/entomology_labels_cli.py
           pyinstaller --onefile --windowed --name entomology-labels-gui \
             --paths . \
@@ -79,6 +88,15 @@ jobs:
             --hidden-import entomology_labels.label_generator \
             --hidden-import entomology_labels.input_handlers \
             --hidden-import entomology_labels.output_generators \
+            --hidden-import entomology_labels.config \
+            --hidden-import entomology_labels.config_io \
+            --hidden-import entomology_labels.dates \
+            --hidden-import entomology_labels.fit \
+            --hidden-import entomology_labels.geocoding \
+            --hidden-import entomology_labels.layout \
+            --hidden-import entomology_labels.photos \
+            --hidden-import entomology_labels.presets \
+            --hidden-import entomology_labels.sites \
             scripts/entomology_labels_gui.py
 
       - name: Build with PyInstaller (Windows)
@@ -92,6 +110,15 @@ jobs:
             --hidden-import entomology_labels.label_generator `
             --hidden-import entomology_labels.input_handlers `
             --hidden-import entomology_labels.output_generators `
+            --hidden-import entomology_labels.config `
+            --hidden-import entomology_labels.config_io `
+            --hidden-import entomology_labels.dates `
+            --hidden-import entomology_labels.fit `
+            --hidden-import entomology_labels.geocoding `
+            --hidden-import entomology_labels.layout `
+            --hidden-import entomology_labels.photos `
+            --hidden-import entomology_labels.presets `
+            --hidden-import entomology_labels.sites `
             scripts/entomology_labels_cli.py
           pyinstaller --onefile --windowed --name entomology-labels-gui `
             --paths . `
@@ -101,6 +128,15 @@ jobs:
             --hidden-import entomology_labels.label_generator `
             --hidden-import entomology_labels.input_handlers `
             --hidden-import entomology_labels.output_generators `
+            --hidden-import entomology_labels.config `
+            --hidden-import entomology_labels.config_io `
+            --hidden-import entomology_labels.dates `
+            --hidden-import entomology_labels.fit `
+            --hidden-import entomology_labels.geocoding `
+            --hidden-import entomology_labels.layout `
+            --hidden-import entomology_labels.photos `
+            --hidden-import entomology_labels.presets `
+            --hidden-import entomology_labels.sites `
             scripts/entomology_labels_gui.py
 
       - name: Create archive (Unix)

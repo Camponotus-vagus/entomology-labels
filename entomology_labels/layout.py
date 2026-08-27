@@ -91,7 +91,8 @@ def render_label_lines(label: "Label", config: "LabelConfig") -> List[LabelLine]
     if label.elevation:
         lines.append(LabelLine(label.elevation, STYLE_ELEVATION))
 
-    lines.append(LabelLine("", STYLE_SPACER))
+    if getattr(config, "spacer_line", True):
+        lines.append(LabelLine("", STYLE_SPACER))
     lines.append(LabelLine(label.code, STYLE_CODE))
     lines.append(LabelLine(label.date, STYLE_DATE))
 

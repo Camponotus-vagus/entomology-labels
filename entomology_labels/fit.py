@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Sequence
 
-from .config import LABEL_PADDING_MM, TEXT_WIDTH_WARN_RATIO
+from .config import TEXT_WIDTH_WARN_RATIO
 from .layout import STYLE_SPACER, render_label_lines
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -66,7 +66,7 @@ def estimate_text_width_mm(text: str, font_size_pt: float) -> float:
 
 def usable_label_width_mm(config: "LabelConfig") -> float:
     """Return the width available for text inside a label, after padding."""
-    return max(0.0, config.label_width_mm - 2 * LABEL_PADDING_MM)
+    return max(0.0, config.label_width_mm - 2 * config.label_padding_mm)
 
 
 def estimate_label_height_mm(label: "Label", config: "LabelConfig") -> float:
@@ -83,7 +83,7 @@ def estimate_label_height_mm(label: "Label", config: "LabelConfig") -> float:
         config.font_size_pt * line.scale * config.line_spacing
         for line in render_label_lines(label, config)
     )
-    return total_pt * MM_PER_POINT + 2 * LABEL_PADDING_MM
+    return total_pt * MM_PER_POINT + 2 * config.label_padding_mm
 
 
 def check_page_fit(config: "LabelConfig") -> List[FitWarning]:
@@ -200,11 +200,19 @@ def check_label_fit(
             if line.text in seen:
                 continue
             seen.add(line.text)
-            verb = "will likely be" if width > available else "may be"
+            likely = width > available
+            if config.text_overflow == "wrap":
+                # Wrapped text is not lost, but it costs a line, which can
+                # push whatever follows off the bottom of the label.
+                consequence = (
+                    "will wrap onto another line" if likely else "may wrap onto another line"
+                )
+            else:
+                consequence = "will likely be clipped" if likely else "may be clipped"
             warnings.append(
                 FitWarning(
                     KIND_TEXT_OVERFLOW,
-                    f'"{line.text}" is about {width:.1f}mm wide and {verb} clipped '
+                    f'"{line.text}" is about {width:.1f}mm wide and {consequence} '
                     f"at {available:.1f}mm",
                     label_index=index,
                 )

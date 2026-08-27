@@ -17,6 +17,7 @@ from .config import (
     FONT_SIZE_PT_MIN,
     LABEL_HEIGHT_MM_MAX,
     LABEL_HEIGHT_MM_MIN,
+    LABEL_PADDING_MM,
     LABEL_WIDTH_MM_MAX,
     LABEL_WIDTH_MM_MIN,
     LABELS_PER_COLUMN_MAX,
@@ -71,6 +72,11 @@ class LabelConfig:
         font_family: Font family name (default: Arial)
         line_spacing: Line spacing multiplier (default: 1.0)
         orientation: Page orientation ('landscape' or 'portrait', default: 'landscape')
+        label_padding_mm: Padding inside each label (default: 1.0). At small
+            label sizes this is a large fraction of the height, so dense
+            layouts reduce it
+        spacer_line: Whether to leave a blank line between the locality and
+            the code (default: True). Dropping it frees a whole line
         text_overflow: How text too wide for the label is handled --
             'wrap' onto another line, 'clip' it with an ellipsis, or
             'shrink' the font until it fits (default: 'wrap')
@@ -91,6 +97,8 @@ class LabelConfig:
     line_spacing: float = 1.0
     orientation: str = "landscape"  # 'landscape' or 'portrait'
     text_overflow: str = DEFAULT_TEXT_OVERFLOW
+    label_padding_mm: float = LABEL_PADDING_MM
+    spacer_line: bool = True
 
     def __post_init__(self):
         """Validate configuration values after initialization."""
@@ -158,6 +166,12 @@ class LabelConfig:
                 f"orientation must be 'landscape' or 'portrait', " f"got '{self.orientation}'"
             )
 
+        if not (0.0 <= self.label_padding_mm <= MARGIN_MM_MAX):
+            raise ValueError(
+                f"label_padding_mm must be between 0 and {MARGIN_MM_MAX}, "
+                f"got {self.label_padding_mm}"
+            )
+
         if self.text_overflow.lower() not in TEXT_OVERFLOW_MODES:
             raise ValueError(
                 f"text_overflow must be one of {TEXT_OVERFLOW_MODES}, "
@@ -202,6 +216,8 @@ class LabelConfig:
             "line_spacing": self.line_spacing,
             "orientation": self.orientation,
             "text_overflow": self.text_overflow,
+            "label_padding_mm": self.label_padding_mm,
+            "spacer_line": self.spacer_line,
         }
 
     @classmethod

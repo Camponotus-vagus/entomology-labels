@@ -1,5 +1,7 @@
 """Tests for the layout fit checks."""
 
+import pytest
+
 from entomology_labels.fit import (
     KIND_GRID_OVERFLOW,
     KIND_LABEL_HEIGHT,
@@ -70,7 +72,7 @@ class TestTextFit:
         assert check_label_fit([Label(code="N1")], config) == []
 
     def test_an_overlong_locality_is_reported(self):
-        config = LabelConfig(label_width_mm=29.0, font_size_pt=6.0)
+        config = LabelConfig(label_width_mm=29.0, font_size_pt=6.0, text_overflow="clip")
         label = Label(location_line2="Giustino (TN), Vedretta d'Amola")
 
         warnings = check_label_fit([label], config)
@@ -154,3 +156,53 @@ class TestCheckFit:
         generator.add_label(Label(location_line1="Norway,", code="N1", date="20.viii.2026"))
 
         assert check_fit(generator) == []
+
+
+class TestWarningWording:
+    """The message must match what the configured overflow mode actually does."""
+
+    LONG = "A very long locality line indeed, far too wide"
+
+    def test_clip_mode_says_clipped(self):
+        config = LabelConfig(label_width_mm=15.0, font_size_pt=6.0, text_overflow="clip")
+
+        (warning,) = [
+            w
+            for w in check_label_fit([Label(location_line1=self.LONG)], config)
+            if w.kind == KIND_TEXT_OVERFLOW
+        ]
+
+        assert "clipped" in warning.message
+
+    def test_wrap_mode_says_wrapped_not_clipped(self):
+        """Wrapped text is not lost; claiming it is would be misleading."""
+        config = LabelConfig(label_width_mm=15.0, font_size_pt=6.0, text_overflow="wrap")
+
+        (warning,) = [
+            w
+            for w in check_label_fit([Label(location_line1=self.LONG)], config)
+            if w.kind == KIND_TEXT_OVERFLOW
+        ]
+
+        assert "wrap" in warning.message
+        assert "clipped" not in warning.message
+
+
+class TestConfigurableSpacing:
+    def test_dropping_the_spacer_frees_a_line(self):
+        with_spacer = LabelConfig(spacer_line=True)
+        without = LabelConfig(spacer_line=False)
+        label = Label(code="N1", date="20.viii.2026")
+
+        assert estimate_label_height_mm(label, without) < estimate_label_height_mm(
+            label, with_spacer
+        )
+
+    def test_padding_counts_against_the_usable_width(self):
+        assert usable_label_width_mm(LabelConfig(label_width_mm=15.2, label_padding_mm=0.4)) == (
+            pytest.approx(14.4)
+        )
+
+    def test_negative_padding_is_rejected(self):
+        with pytest.raises(ValueError, match="label_padding_mm"):
+            LabelConfig(label_padding_mm=-1.0)

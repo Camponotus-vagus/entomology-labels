@@ -36,6 +36,7 @@ from .photos import (
     read_photo_tags,
     scan_photos,
 )
+from .presets import DESCRIPTIONS, get_preset, labels_per_page, preset_names
 from .sites import load_site_registry, resolve_row
 
 # Setup logging
@@ -433,6 +434,11 @@ def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("-o", "--output", required=True, help="Output file path (.html, .pdf, or .docx)")
+@click.option(
+    "--preset",
+    type=click.Choice(preset_names()),
+    help="Named label geometry; run 'entomology-labels presets' to see them",
+)
 @click.option("--config", "config_path", type=click.Path(), help="Layout configuration file")
 @click.option(
     "--sites",
@@ -506,6 +512,7 @@ def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
 def generate(
     input_file: str,
     output: str,
+    preset: Optional[str],
     config_path: Optional[str],
     sites_path: Optional[str],
     save_config: Optional[str],
@@ -558,10 +565,12 @@ def generate(
 
     logger.info(f"Loaded {len(labels)} labels from {input_path}")
 
-    # Configure generator
+    # Configure generator. A preset supplies a whole geometry; individual
+    # flags still win over it, so --preset museum --font-size 5 does what
+    # it looks like it does.
     try:
-        config = resolve_config(
-            config_path,
+        overrides = get_preset(preset) if preset else {}
+        overrides.update(
             _layout_overrides(
                 labels_per_row=rows,
                 labels_per_column=cols,
@@ -572,8 +581,9 @@ def generate(
                 font_size_pt=font_size,
                 font_family=font_family,
                 text_overflow=text_overflow,
-            ),
+            )
         )
+        config = resolve_config(config_path, overrides)
     except ValueError as e:
         raise click.ClickException(f"Invalid configuration: {e}")
 
@@ -775,6 +785,28 @@ def template(output_file: str, file_format: str):
 
     except Exception as e:
         raise click.ClickException(f"Error creating template: {e}")
+
+
+@cli.command()
+def presets():
+    """List the available label geometries.
+
+    The smaller sizes follow published guidance from entomological
+    collections, which converges on labels around 15-18mm wide set in 4pt
+    type. 'legacy' reproduces this tool's original geometry.
+    """
+    click.echo("Available label geometries:\n")
+    for name in preset_names():
+        settings = get_preset(name)
+        click.secho(f"  {name}", bold=True, nl=False)
+        click.echo(f"  -  {DESCRIPTIONS[name]}")
+        click.echo(
+            f"      {settings['label_width_mm']}x{settings['label_height_mm']}mm, "
+            f"{settings['font_size_pt']}pt {settings['font_family']}, "
+            f"{settings['labels_per_row']}x{settings['labels_per_column']}"
+            f" = {labels_per_page(name)} labels per sheet"
+        )
+    click.echo("\n  entomology-labels generate data.csv -o labels.html --preset museum")
 
 
 @cli.command()

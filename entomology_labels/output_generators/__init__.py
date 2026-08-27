@@ -10,7 +10,6 @@ import webbrowser
 from pathlib import Path
 from typing import Optional, Union
 
-from ..config import LABEL_PADDING_MM
 from ..label_generator import LabelGenerator
 from ..layout import (
     STYLE_ATTRIBUTION,
@@ -189,7 +188,7 @@ def _generate_html_content(generator: LabelGenerator) -> str:
     .label {{
         width: {config.label_width_mm}mm;
         height: {config.label_height_mm}mm;
-        padding: {LABEL_PADDING_MM}mm;
+        padding: {config.label_padding_mm}mm;
         overflow: hidden;
         display: flex;
         flex-direction: column;
