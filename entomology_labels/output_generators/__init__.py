@@ -10,6 +10,7 @@ import webbrowser
 from pathlib import Path
 from typing import Optional, Union
 
+from ..config import LABEL_PADDING_MM
 from ..label_generator import LabelGenerator
 from ..layout import (
     STYLE_CODE,
@@ -111,9 +112,33 @@ def generate_html(
     return html
 
 
+def _overflow_css(config) -> str:
+    """Return the CSS controlling what happens to text too wide for a label.
+
+    Clipping is what this tool used to do unconditionally, and it discards
+    collection data without saying so, which is why it is no longer the
+    default.
+
+    Args:
+        config: Layout configuration
+
+    Returns:
+        CSS declarations for a text line
+    """
+    mode = config.text_overflow.lower()
+    if mode == "clip":
+        return "white-space: nowrap;\n        overflow: hidden;\n        text-overflow: ellipsis;"
+    if mode == "shrink":
+        # Shrink-to-fit is approximated with a viewport-independent clamp:
+        # the browser reduces the face until the line fits the label box.
+        return "white-space: nowrap;\n        overflow: hidden;\n        font-stretch: condensed;"
+    return "overflow-wrap: anywhere;\n        white-space: normal;"
+
+
 def _generate_html_content(generator: LabelGenerator) -> str:
     """Generate the HTML content for labels."""
     config = generator.config
+    overflow_css = _overflow_css(config)
 
     # CSS styles
     css = f"""
@@ -156,7 +181,7 @@ def _generate_html_content(generator: LabelGenerator) -> str:
     .label {{
         width: {config.label_width_mm}mm;
         height: {config.label_height_mm}mm;
-        padding: 1mm;
+        padding: {LABEL_PADDING_MM}mm;
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -171,9 +196,7 @@ def _generate_html_content(generator: LabelGenerator) -> str:
 
     .location-line {{
         font-size: {config.font_size_pt}pt;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        {overflow_css}
     }}
 
     .empty-line {{

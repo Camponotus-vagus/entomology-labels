@@ -11,7 +11,8 @@ from pathlib import Path
 import click
 
 from . import __version__
-from .config import LOG_FORMAT, LOG_LEVEL
+from .config import DEFAULT_TEXT_OVERFLOW, LOG_FORMAT, LOG_LEVEL, TEXT_OVERFLOW_MODES
+from .fit import check_fit
 from .input_handlers import load_data
 from .label_generator import LabelConfig, LabelGenerator
 from .output_generators import generate_docx, generate_html, generate_pdf
@@ -113,6 +114,33 @@ def cli():
     pass
 
 
+def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
+    """Print any fit warnings for a generator to stderr.
+
+    Args:
+        generator: The generator about to produce output
+        strict: Whether warnings should be treated as errors
+
+    Returns:
+        True when warnings were found and strict was requested
+    """
+    warnings = check_fit(generator)
+    if not warnings:
+        return False
+
+    for warning in warnings:
+        click.secho(f"warning: {warning}", err=True, fg="yellow")
+
+    if generator.config.text_overflow == "clip":
+        click.secho(
+            "note: --text-overflow=clip discards the trimmed text; "
+            "'wrap' keeps it on another line",
+            err=True,
+        )
+
+    return strict
+
+
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True))
 @click.option("-o", "--output", required=True, help="Output file path (.html, .pdf, or .docx)")
@@ -130,6 +158,17 @@ def cli():
 )
 @click.option("--font-size", default=6.0, type=float, help="Font size in points (default: 6)")
 @click.option("--font-family", default="Arial", help="Font family (default: Arial)")
+@click.option(
+    "--text-overflow",
+    type=click.Choice(TEXT_OVERFLOW_MODES),
+    default=DEFAULT_TEXT_OVERFLOW,
+    help=f"Handling for text too wide for a label (default: {DEFAULT_TEXT_OVERFLOW})",
+)
+@click.option(
+    "--strict-fit",
+    is_flag=True,
+    help="Treat fit warnings as errors instead of printing them",
+)
 @click.option("--open", "open_after", is_flag=True, help="Open file after generation")
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose output")
 def generate(
@@ -143,6 +182,8 @@ def generate(
     page_height: float,
     font_size: float,
     font_family: str,
+    text_overflow: str,
+    strict_fit: bool,
     open_after: bool,
     verbose: bool,
 ):
@@ -203,6 +244,7 @@ def generate(
             font_size_pt=font_size,
             font_family=font_family,
             orientation="landscape" if page_width > page_height else "portrait",
+            text_overflow=text_overflow,
         )
     except ValueError as e:
         raise click.ClickException(f"Invalid configuration: {e}")
@@ -213,6 +255,11 @@ def generate(
     if verbose:
         click.echo(f"Configuration: {rows}x{cols} labels per page")
         click.echo(f"Total pages: {generator.total_pages}")
+
+    if _report_fit(generator, strict=strict_fit):
+        raise click.ClickException(
+            "Layout problems reported above; re-run without --strict-fit to generate anyway"
+        )
 
     _write_output(generator, output_path, open_after)
 

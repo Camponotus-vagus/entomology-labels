@@ -29,6 +29,20 @@ DPI_MAX = 1200
 FONT_FAMILY_PATTERN = r"^[A-Za-z0-9 _-]+$"
 PREVIEW_SCALE_FACTOR = 3.5
 
+# Padding inside each label, in millimetres. The HTML renderer and the fit
+# checker both read this, so that a warning about clipped text cannot
+# disagree with the layout that actually clips it.
+LABEL_PADDING_MM = 1.0
+
+# Fraction of the usable width at which a line is reported as at risk of
+# being clipped. Below 1.0 because the width estimate is approximate.
+TEXT_WIDTH_WARN_RATIO = 0.9
+
+# How overlong label text is handled: "wrap" onto another line, "clip" it
+# with an ellipsis, or "shrink" the font until it fits.
+TEXT_OVERFLOW_MODES = ("wrap", "clip", "shrink")
+DEFAULT_TEXT_OVERFLOW = "wrap"
+
 # File Paths
 DEFAULT_CONFIG_PATH = "label_config.json"
 

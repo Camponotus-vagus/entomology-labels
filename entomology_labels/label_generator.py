@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from typing import List, Optional
 
 from .config import (
+    DEFAULT_TEXT_OVERFLOW,
     FONT_FAMILY_PATTERN,
     FONT_SIZE_PT_MAX,
     FONT_SIZE_PT_MIN,
@@ -26,6 +27,7 @@ from .config import (
     MARGIN_MM_MIN,
     MAX_LABELS_PER_GENERATOR,
     MAX_SEQUENTIAL_LABELS,
+    TEXT_OVERFLOW_MODES,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +71,9 @@ class LabelConfig:
         font_family: Font family name (default: Arial)
         line_spacing: Line spacing multiplier (default: 1.0)
         orientation: Page orientation ('landscape' or 'portrait', default: 'landscape')
+        text_overflow: How text too wide for the label is handled --
+            'wrap' onto another line, 'clip' it with an ellipsis, or
+            'shrink' the font until it fits (default: 'wrap')
     """
 
     labels_per_row: int = 10
@@ -85,6 +90,7 @@ class LabelConfig:
     font_family: str = "Arial"
     line_spacing: float = 1.0
     orientation: str = "landscape"  # 'landscape' or 'portrait'
+    text_overflow: str = DEFAULT_TEXT_OVERFLOW
 
     def __post_init__(self):
         """Validate configuration values after initialization."""
@@ -152,6 +158,12 @@ class LabelConfig:
                 f"orientation must be 'landscape' or 'portrait', " f"got '{self.orientation}'"
             )
 
+        if self.text_overflow.lower() not in TEXT_OVERFLOW_MODES:
+            raise ValueError(
+                f"text_overflow must be one of {TEXT_OVERFLOW_MODES}, "
+                f"got '{self.text_overflow}'"
+            )
+
     @property
     def is_landscape(self) -> bool:
         """Check if orientation is landscape."""
@@ -189,6 +201,7 @@ class LabelConfig:
             "font_family": self.font_family,
             "line_spacing": self.line_spacing,
             "orientation": self.orientation,
+            "text_overflow": self.text_overflow,
         }
 
     @classmethod

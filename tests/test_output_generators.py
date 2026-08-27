@@ -2,6 +2,7 @@
 
 import pytest
 
+from entomology_labels.config import LABEL_PADDING_MM
 from entomology_labels.label_generator import Label, LabelConfig, LabelGenerator
 from entomology_labels.output_generators import (
     _escape_html,
@@ -66,3 +67,37 @@ class TestFontFamilyIsNotInjectable:
     def test_configured_font_reaches_the_stylesheet(self, generator):
         generator.config.font_family = "Courier New"
         assert "font-family: Courier New" in generate_html(generator)
+
+
+class TestTextOverflowModes:
+    """Overlong text must not silently vanish from a printed sheet."""
+
+    def _css_for(self, mode):
+        generator = LabelGenerator(LabelConfig(text_overflow=mode))
+        generator.add_label(Label(location_line1="Norway, Vestland,", code="N1"))
+        return generate_html(generator)
+
+    def test_wrap_is_the_default(self):
+        assert LabelConfig().text_overflow == "wrap"
+
+    def test_wrap_keeps_the_text_on_another_line(self):
+        html = self._css_for("wrap")
+
+        assert "overflow-wrap: anywhere" in html
+        assert "text-overflow: ellipsis" not in html
+
+    def test_clip_remains_available_for_reproducing_old_sheets(self):
+        html = self._css_for("clip")
+
+        assert "text-overflow: ellipsis" in html
+        assert "white-space: nowrap" in html
+
+    def test_an_unknown_mode_is_rejected(self):
+        with pytest.raises(ValueError, match="text_overflow"):
+            LabelConfig(text_overflow="explode")
+
+    def test_padding_comes_from_the_shared_constant(self):
+        """The fit checker measures against this number; they must agree."""
+        html = self._css_for("wrap")
+
+        assert f"padding: {LABEL_PADDING_MM}mm" in html
