@@ -411,12 +411,15 @@ SUPPORTED INPUT FORMATS:
   - YAML (.yaml, .yml)
 
 EXPECTED COLUMNS/FIELDS:
-  - location_line1 (or location1, località1)
-  - location_line2 (or location2, località2)
-  - code (or specimen_code, codice)
-  - date (or collection_date, data)
-  - additional_info (or notes, note) - optional
-  - count (or quantity) - optional, for duplicating labels
+  - location_line1 (or location1, location, loc1)
+  - location_line2 (or location2, loc2)
+  - code (or specimen_code, specimen_id, id)
+  - date (or collection_date)
+  - additional_info (or notes, info) - optional
+  - count (or quantity, copies, n) - optional, for duplicating labels
+
+  Italian headings are also accepted for older files:
+  localita1, localita2, codice, data, data_raccolta, note, quantita
 
 OUTPUT FORMATS:
   - HTML (.html) - Open in browser, print to PDF
@@ -429,11 +432,15 @@ DEFAULT LAYOUT (A4):
   - 130 labels per page
 
 LABEL FORMAT:
-  Line 1: Location (region/country)
-  Line 2: Location (municipality/locality)
+  Line 1: Location (country, region)
+  Line 2: Location (municipality, locality)
   [empty line]
   Code (specimen ID)
-  Date (collection date)
+  Date (collection date, e.g. 20.viii.2026)
+
+  Dates use the international entomological convention of a
+  Roman-numeral month, which avoids the day/month ambiguity of
+  all-numeric dates.
 """
     click.echo(info_text)
 

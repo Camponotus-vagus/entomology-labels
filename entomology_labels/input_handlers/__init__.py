@@ -169,13 +169,20 @@ def load_data(file_path: Union[str, Path]) -> List[Label]:
 def load_excel(file_path: Path) -> List[Label]:
     """Load labels from an Excel file (.xlsx, .xls).
 
-    Expected columns (case-insensitive, flexible naming):
-    - location_line1 / location1 / località1 / location
-    - location_line2 / location2 / località2
-    - code / specimen_code / codice
-    - date / collection_date / data
-    - additional_info / notes / note (optional)
-    - count / quantity / quantità (optional, for duplicating labels)
+    Column headings are matched case-insensitively, and several names are
+    accepted per field. Where a file carries more than one of them, the first
+    listed wins:
+
+    - location_line1: location_line1, location1, location, loc1
+    - location_line2: location_line2, location2, loc2
+    - code: code, specimen_code, specimen_id, id
+    - date: date, collection_date
+    - additional_info: additional_info, notes, info (optional)
+    - count: count, quantity, copies, n (optional, duplicates the label)
+
+    The Italian headings localita1, localita2, codice, data, data_raccolta,
+    note and quantita are also accepted, for spreadsheets written before the
+    project moved to English.
     """
     try:
         import pandas as pd
@@ -455,14 +462,31 @@ def _dataframe_to_labels(df) -> List[Label]:
     # Normalize column names
     df.columns = [str(c).strip().lower() for c in df.columns]
 
-    # Map various column name variations
+    # Accepted column names per field, in priority order. English names are
+    # listed first so that a file carrying both an English and an Italian
+    # heading resolves to the English one; the Italian aliases are kept for
+    # compatibility with spreadsheets written before the project moved to
+    # English, and removing them would break those files.
     column_map = {
-        "location_line1": ["location_line1", "location1", "località1", "location", "loc1"],
-        "location_line2": ["location_line2", "location2", "località2", "loc2"],
-        "code": ["code", "specimen_code", "codice", "id", "specimen_id"],
-        "date": ["date", "collection_date", "data", "data_raccolta"],
-        "additional_info": ["additional_info", "notes", "note", "info"],
-        "count": ["count", "quantity", "quantità", "n", "copies"],
+        "location_line1": [
+            "location_line1",
+            "location1",
+            "location",
+            "loc1",
+            "località1",
+            "localita1",
+        ],
+        "location_line2": [
+            "location_line2",
+            "location2",
+            "loc2",
+            "località2",
+            "localita2",
+        ],
+        "code": ["code", "specimen_code", "specimen_id", "id", "codice"],
+        "date": ["date", "collection_date", "data_raccolta", "data"],
+        "additional_info": ["additional_info", "notes", "info", "note"],
+        "count": ["count", "quantity", "copies", "n", "quantità", "quantita"],
     }
 
     def find_column(possible_names):

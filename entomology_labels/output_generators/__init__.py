@@ -277,7 +277,7 @@ def _generate_html_content(generator: LabelGenerator) -> str:
                 labels_html.append(label_html)
 
         page_html = f"""
-        <div class="page-info no-print">Pagina {page_num + 1} di {generator.total_pages}</div>
+        <div class="page-info no-print">Page {page_num + 1} of {generator.total_pages}</div>
         <div class="page">
             {''.join(labels_html)}
         </div>
@@ -285,17 +285,17 @@ def _generate_html_content(generator: LabelGenerator) -> str:
         pages_html.append(page_html)
 
     html = f"""<!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Etichette Entomologiche</title>
+    <title>Entomology Labels</title>
     <style>
         {css}
     </style>
 </head>
 <body>
-    <button class="print-button no-print" onclick="window.print()">Stampa / Salva PDF</button>
+    <button class="print-button no-print" onclick="window.print()">Print / Save PDF</button>
     {''.join(pages_html)}
     <script>
         // Auto-adjust for print
