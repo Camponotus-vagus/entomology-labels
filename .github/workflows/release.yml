@@ -218,8 +218,14 @@ jobs:
 
             #### From PyPI (recommended)
             ```bash
-            pip install entomology-labels
+            pip install 'entomology-labels[all]'
             ```
+            The `[all]` extra adds Excel and YAML input, Word and PDF output,
+            and reading dates and coordinates from photo metadata. Without it
+            the package reads CSV, TXT and JSON and writes HTML.
+
+            Keep the quotes: `[all]` is a glob pattern in zsh, the default shell
+            on macOS, so the unquoted form fails there.
 
             #### From Release Binary
             1. Download the appropriate archive for your platform
