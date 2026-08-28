@@ -923,7 +923,10 @@ def photos_probe(paths, limit: int):
             )
         else:
             click.secho("  ->  position                 none (GPS not recorded)", fg="yellow")
-        click.echo(f"  ->  elevation                {record.elevation_m or '-'}")
+        # `or "-"` would print a dash for 0.0, which is a real reading on a
+        # shoreline, not a missing one.
+        elevation = "-" if record.elevation_m is None else record.elevation_m
+        click.echo(f"  ->  elevation                {elevation}")
         click.echo(f"  ->  label date               {label_date}")
         click.echo("")
         read += 1

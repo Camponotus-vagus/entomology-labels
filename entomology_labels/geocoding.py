@@ -61,20 +61,39 @@ GEONAMES_URL = "http://api.geonames.org/findNearbyJSON"
 #: Address components to try, in order, for the country/region line.
 _REGION_KEYS = ("state", "province", "region", "county", "state_district")
 
-#: Address components to try, in order, for the locality line.
+#: Address components naming the settlement a site sits in.
+_SETTLEMENT_KEYS = ("municipality", "city", "town", "village")
+
+#: Address components naming a place *within* a settlement, most specific
+#: first. Settlement names are deliberately absent: they are read separately,
+#: and including them here meant that a site with no finer feature resolved to
+#: the settlement twice and printed as the bare municipality.
+#:
+#: The order is from field results rather than intuition. `suburb` used to
+#: precede `neighbourhood`, which picked the port district "Skuteviken" for a
+#: site 300 m up the Floyen hillside while the same response carried
+#: `neighbourhood: Skansemyren`. `locality` was missing entirely, which is the
+#: key Nominatim uses for named but unpopulated places -- the usual case for a
+#: mountain collecting site. `natural` and `peak` are rare in practice (absent
+#: from twelve queries across Norway and the Alps) but are the most specific
+#: names when they do appear.
 _PLACE_KEYS = (
     "natural",
     "peak",
-    "park",
-    "suburb",
-    "neighbourhood",
-    "village",
+    "farm",
+    "isolated_dwelling",
+    "locality",
     "hamlet",
-    "town",
-    "city",
-    "municipality",
+    "neighbourhood",
+    "quarter",
+    "suburb",
     "city_district",
+    "park",
 )
+
+#: Nominatim zoom for reverse lookups. 14 returns the whole municipality for a
+#: rural site; 16 resolves the named feature within it.
+_REVERSE_ZOOM = 16
 
 
 @dataclass(frozen=True)
@@ -140,7 +159,7 @@ class NominatimGeocoder:
                 "format": "jsonv2",
                 "lat": f"{latitude:.5f}",
                 "lon": f"{longitude:.5f}",
-                "zoom": "14",
+                "zoom": str(_REVERSE_ZOOM),
                 "addressdetails": "1",
             }
         )
@@ -152,14 +171,7 @@ class NominatimGeocoder:
         country = _clean(address.get("country"))
         region = next((_clean(address[k]) for k in _REGION_KEYS if address.get(k)), "")
         place = next((_clean(address[k]) for k in _PLACE_KEYS if address.get(k)), "")
-        settlement = next(
-            (
-                _clean(address[k])
-                for k in ("municipality", "city", "town", "village")
-                if address.get(k)
-            ),
-            "",
-        )
+        settlement = next((_clean(address[k]) for k in _SETTLEMENT_KEYS if address.get(k)), "")
 
         line1 = ", ".join(part for part in (country, region) if part)
         if line1:

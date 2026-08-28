@@ -231,3 +231,96 @@ class TestOutagesAreNotCached:
         geocoder.reverse.side_effect = GeocodeUnavailable("network down")
 
         assert suggest_for_events([event], geocoder) == [("S1", None)]
+
+
+# Response shapes observed in the field for two real collecting sites above
+# Bergen. Both produced a wrong or useless suggestion before the key ordering
+# was corrected.
+FLOYEN_HILLSIDE = {
+    "address": {
+        "suburb": "Skuteviken",  # port district, sea level, 1.7 km west
+        "neighbourhood": "Skansemyren",  # the hillside itself
+        "city": "Bergen",
+        "municipality": "Bergen",
+        "state": "Vestland",
+        "country": "Norway",
+    }
+}
+
+ULRIKEN_SLOPE = {
+    "address": {
+        "locality": "Ulriken",  # named but unpopulated: the usual mountain case
+        "city": "Bergen",
+        "municipality": "Bergen",
+        "state": "Vestland",
+        "country": "Norway",
+    }
+}
+
+
+class TestPlaceKeyPriority:
+    """Regressions from a field run against live Nominatim."""
+
+    def test_the_hillside_beats_the_port_district(self):
+        with _urlopen_returning(FLOYEN_HILLSIDE):
+            suggestion = NominatimGeocoder().reverse(60.3964, 5.3531)
+
+        assert suggestion.location_line2 == "Bergen, Skansemyren"
+        assert "Skuteviken" not in suggestion.location_line2
+
+    def test_a_named_unpopulated_place_beats_the_municipality(self):
+        """Without `locality` this returned the bare city for a 3 m site."""
+        with _urlopen_returning(ULRIKEN_SLOPE):
+            suggestion = NominatimGeocoder().reverse(60.3733, 5.3908)
+
+        assert suggestion.location_line2 == "Bergen, Ulriken"
+
+    def test_a_site_with_no_finer_feature_still_names_the_settlement(self):
+        with _urlopen_returning({"address": {"city": "Bergen", "country": "Norway"}}):
+            suggestion = NominatimGeocoder().reverse(60.0, 5.0)
+
+        assert suggestion.location_line2 == "Bergen"
+
+    def test_the_settlement_is_never_repeated(self):
+        """Settlement keys used to sit in both lists and print twice."""
+        with _urlopen_returning({"address": {"village": "Bondone", "country": "Italy"}}):
+            suggestion = NominatimGeocoder().reverse(45.9, 10.9)
+
+        assert suggestion.location_line2 == "Bondone"
+
+    def test_rural_keys_are_recognised(self):
+        with _urlopen_returning({"address": {"farm": "Malga Tovel", "municipality": "Ville"}}):
+            suggestion = NominatimGeocoder().reverse(46.2, 10.9)
+
+        assert suggestion.location_line2 == "Ville, Malga Tovel"
+
+    def test_a_natural_feature_wins_when_present(self):
+        payload = {
+            "address": {
+                "natural": "Vedretta d'Amola",
+                "suburb": "somewhere",
+                "municipality": "Giustino",
+            }
+        }
+        with _urlopen_returning(payload):
+            suggestion = NominatimGeocoder().reverse(46.1, 10.6)
+
+        assert suggestion.location_line2 == "Giustino, Vedretta d'Amola"
+
+    def test_place_and_settlement_keys_do_not_overlap(self):
+        """The overlap is what made a settlement resolve to itself and vanish."""
+        from entomology_labels.geocoding import _PLACE_KEYS, _SETTLEMENT_KEYS
+
+        assert not set(_PLACE_KEYS) & set(_SETTLEMENT_KEYS)
+
+
+class TestReverseZoom:
+    def test_the_request_asks_for_feature_level_detail(self):
+        """Zoom 14 returns the municipality for a rural site."""
+        from entomology_labels.geocoding import _REVERSE_ZOOM
+
+        with _urlopen_returning(ULRIKEN_SLOPE) as opener:
+            NominatimGeocoder().reverse(60.3733, 5.3908)
+
+        assert f"zoom={_REVERSE_ZOOM}" in opener.call_args[0][0].full_url
+        assert _REVERSE_ZOOM >= 16

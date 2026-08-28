@@ -178,3 +178,29 @@ class TestTemplate:
         result = runner.invoke(cli, ["generate", str(target), "-o", str(out)])
         assert result.exit_code == 0, result.output
         assert out.exists()
+
+
+class TestProbeElevation:
+    """A reading of exactly zero is a reading, not a missing value."""
+
+    def _probe_output(self, tmp_path, altitude_m, exif_builder):
+        from click.testing import CliRunner
+
+        from entomology_labels.cli import cli
+
+        path = tmp_path / "shore.ORF"
+        path.write_bytes(exif_builder(altitude_m=altitude_m))
+        return CliRunner().invoke(cli, ["photos", "probe", str(tmp_path)]).output
+
+    def test_sea_level_is_printed_as_a_number(self, tmp_path, exif_builder):
+        """A fjord shore reads 0 m; `or "-"` made that look like no GPS fix."""
+        output = self._probe_output(tmp_path, 0.0, exif_builder)
+
+        elevation_line = next(ln for ln in output.splitlines() if "elevation" in ln)
+        assert "0" in elevation_line
+        assert elevation_line.strip().endswith("-") is False
+
+    def test_a_normal_altitude_still_prints(self, tmp_path, exif_builder):
+        output = self._probe_output(tmp_path, 312.2, exif_builder)
+
+        assert "312.2" in output

@@ -344,3 +344,40 @@ class TestDirectoryScanning:
             (tmp_path / f"p{i}.ORF").write_bytes(exif_builder())
 
         assert find_photos([tmp_path]) == find_photos([tmp_path])
+
+
+class TestSixtySecondRounding:
+    """Writers encode a decimal degree as rationals and land on exactly 60.
+
+    41.8 degrees becomes 41 deg 47' 60" because 0.8 * 60 is 47.999... in
+    binary. Rejecting that discarded the position with only a warning.
+    """
+
+    def test_sixty_seconds_carries_into_the_next_minute(self):
+        assert dms_to_decimal([_Ratio(41), _Ratio(47), _Ratio(60)], "N") == pytest.approx(41.8)
+
+    def test_sixty_minutes_carries_into_the_next_degree(self):
+        assert dms_to_decimal([_Ratio(41), _Ratio(60), _Ratio(0)], "N") == pytest.approx(42.0)
+
+    def test_it_agrees_with_the_unrounded_form(self):
+        rounded = dms_to_decimal([_Ratio(41), _Ratio(47), _Ratio(60)], "N")
+        exact = dms_to_decimal([_Ratio(41), _Ratio(48), _Ratio(0)], "N")
+
+        assert rounded == pytest.approx(exact)
+
+    def test_the_southern_hemisphere_still_negates(self):
+        assert dms_to_decimal([_Ratio(41), _Ratio(47), _Ratio(60)], "S") == pytest.approx(-41.8)
+
+    @pytest.mark.parametrize("minutes,seconds", [(61, 0), (0, 61), (100, 100), (-1, 0)])
+    def test_genuinely_malformed_values_are_still_rejected(self, minutes, seconds):
+        with pytest.raises(ValueError, match="out of range"):
+            dms_to_decimal([_Ratio(41), _Ratio(minutes), _Ratio(seconds)], "N")
+
+    def test_a_rounded_coordinate_survives_the_round_trip(self):
+        """One decimal place is where this bites: hand-copied waypoints."""
+        record = _tags_to_photo(
+            _tags(**{"GPS GPSLatitude": _Tag([_Ratio(60), _Ratio(23), _Ratio(60)])}), "x.ORF"
+        )
+
+        assert record.has_position
+        assert record.latitude == pytest.approx(60.4)
