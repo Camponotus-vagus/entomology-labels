@@ -92,6 +92,16 @@ _PLACE_KEYS = (
     "park",
 )
 
+# Only the `address` block above is read. The response also carries the matched
+# object's own `name`, which looks like a second source of toponyms and is not:
+# across 24 site/zoom combinations it was always already present in `address`,
+# under the key named by `addresstype`. It points at which component matched
+# rather than adding one. Reading it would need an `addresstype` allowlist, and
+# that allowlist yields exactly the subset _PLACE_KEYS already takes -- while
+# without one it yields roads, in town and mountain alike: `SS242` at Passo
+# Sella, `Sentiero Belvedere (chiuso)` in Val di Tovel. Tested and rejected.
+# `addresstype` is the clean discriminant should filtering ever be needed.
+
 #: Nominatim zoom for reverse lookups. 14 returns the whole municipality for a
 #: rural site; 16 resolves the named feature within it.
 _REVERSE_ZOOM = 16
