@@ -20,6 +20,7 @@ It is per site, not per photograph. Forty frames from one morning are one
 lookup, which is ordinary use of a free service rather than bulk querying.
 """
 
+import hashlib
 import json
 import logging
 import time
@@ -115,6 +116,23 @@ def _clean(value: Any) -> str:
     return _sanitize_string(str(value))[:MAX_EXIF_STRING_LEN].strip()
 
 
+def _fingerprint(*parts: Any) -> str:
+    """Short digest of the inputs that determine a derived suggestion.
+
+    Derived rather than hand-maintained: a version constant only invalidates
+    the cache if whoever edits the key tuples remembers to bump it, which is
+    exactly what gets forgotten.
+
+    Args:
+        *parts: Values the derivation depends on
+
+    Returns:
+        Eight hex characters, stable across processes
+    """
+    payload = json.dumps(parts, sort_keys=True, default=list)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
+
+
 class _RateLimiter:
     """Enforces a minimum interval between requests."""
 
@@ -139,6 +157,11 @@ class NominatimGeocoder:
 
     name = "nominatim"
     attribution = OSM_ATTRIBUTION
+
+    @property
+    def cache_fingerprint(self) -> str:
+        """Digest of everything that decides this backend's answer."""
+        return _fingerprint(_REVERSE_ZOOM, _PLACE_KEYS, _SETTLEMENT_KEYS, _REGION_KEYS)
 
     def __init__(self, *, timeout_s: float = GEOCODE_TIMEOUT_S):
         self._timeout_s = timeout_s
@@ -192,6 +215,11 @@ class GeoNamesGeocoder:
 
     name = "geonames"
     attribution = "Locality suggestions from GeoNames (CC BY)"
+
+    @property
+    def cache_fingerprint(self) -> str:
+        """Digest of everything that decides this backend's answer."""
+        return _fingerprint("countryName", "adminName1", "name")
 
     def __init__(self, username: str, *, timeout_s: float = GEOCODE_TIMEOUT_S):
         if not username:
@@ -273,6 +301,12 @@ class CachingGeocoder:
 
     Re-running a scan is common while a draft is being edited, and it should
     not mean querying a free service again for answers already received.
+
+    What is stored is the *derived* suggestion, not the raw response, so the
+    key carries a fingerprint of everything that decides that derivation --
+    the zoom, and the address keys the answer is read from. Without it, a
+    change to either kept serving the old answer with nothing to show it was
+    stale, which is a lie the caller cannot detect.
     """
 
     def __init__(self, inner, cache_path: Optional[Path] = None):
@@ -289,9 +323,17 @@ class CachingGeocoder:
     def attribution(self) -> str:
         return self._inner.attribution
 
+    @property
+    def _prefix(self) -> str:
+        """Key prefix for entries this geocoder, as currently configured, wrote."""
+        fingerprint = getattr(self._inner, "cache_fingerprint", "")
+        if not isinstance(fingerprint, str):  # pragma: no cover - defensive
+            fingerprint = ""
+        return f"{self._inner.name}:{fingerprint}:"
+
     def _key(self, latitude: float, longitude: float) -> str:
         return (
-            f"{self._inner.name}:"
+            f"{self._prefix}"
             f"{round(latitude, GEOCODE_CACHE_PRECISION)},"
             f"{round(longitude, GEOCODE_CACHE_PRECISION)}"
         )
@@ -304,6 +346,28 @@ class CachingGeocoder:
         except (OSError, json.JSONDecodeError):
             logger.debug("locality cache unreadable; starting a new one")
             self._cache = {}
+            return
+
+        self._drop_superseded()
+
+    def _drop_superseded(self) -> None:
+        """Discard entries this geocoder wrote under a different fingerprint.
+
+        Scoped to this geocoder's name: one cache file can hold entries from
+        more than one backend, and a blanket sweep would delete the others'.
+        """
+        stale = [
+            key
+            for key in self._cache
+            if key.startswith(f"{self._inner.name}:") and not key.startswith(self._prefix)
+        ]
+        for key in stale:
+            del self._cache[key]
+
+        if stale:
+            logger.info(
+                f"discarded {len(stale)} locality suggestion(s) cached under older settings"
+            )
 
     def _save(self) -> None:
         if not self._cache_path:
