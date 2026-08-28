@@ -197,7 +197,11 @@ def dms_to_decimal(dms: Sequence[Any], ref: str) -> float:
         raise ValueError(f"expected three components, got {len(dms)}")
 
     degrees, minutes, seconds = (_ratio_to_float(part) for part in dms)
-    if not (0 <= minutes < 60 and 0 <= seconds < 60):
+    # Exactly 60 is allowed. Writers that encode a decimal degree as rationals
+    # land on it through binary rounding -- 41.8 degrees becomes 41 deg 47' 60"
+    # because 0.8 * 60 is 47.999... -- and the arithmetic below carries it into
+    # the next minute correctly. Anything above 60 is genuinely malformed.
+    if not (0 <= minutes <= 60 and 0 <= seconds <= 60):
         raise ValueError(f"minutes/seconds out of range: {minutes}, {seconds}")
 
     value = degrees + minutes / 60.0 + seconds / 3600.0
