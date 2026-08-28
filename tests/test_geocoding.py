@@ -111,6 +111,7 @@ class TestCaching:
     def test_a_repeated_lookup_does_not_hit_the_service(self, tmp_path):
         inner = mock.MagicMock()
         inner.name = "stub"
+        inner.cache_fingerprint = "aaaa1111"
         inner.attribution = "stub"
         inner.reverse.return_value = PlaceSuggestion("Norway,", "Bergen", "stub")
         geocoder = CachingGeocoder(inner, tmp_path / "cache.json")
@@ -124,11 +125,13 @@ class TestCaching:
         cache = tmp_path / "cache.json"
         inner = mock.MagicMock()
         inner.name = "stub"
+        inner.cache_fingerprint = "aaaa1111"
         inner.reverse.return_value = PlaceSuggestion("Norway,", "Bergen", "stub")
         CachingGeocoder(inner, cache).reverse(60.3964, 5.3531)
 
         second = mock.MagicMock()
         second.name = "stub"
+        second.cache_fingerprint = "aaaa1111"
         result = CachingGeocoder(second, cache).reverse(60.3964, 5.3531)
 
         assert second.reverse.call_count == 0
@@ -137,6 +140,7 @@ class TestCaching:
     def test_a_negative_result_is_cached_too(self, tmp_path):
         inner = mock.MagicMock()
         inner.name = "stub"
+        inner.cache_fingerprint = "aaaa1111"
         inner.reverse.return_value = None
         geocoder = CachingGeocoder(inner, tmp_path / "cache.json")
 
@@ -149,6 +153,7 @@ class TestCaching:
         cache.write_text("{not json", encoding="utf-8")
         inner = mock.MagicMock()
         inner.name = "stub"
+        inner.cache_fingerprint = "aaaa1111"
         inner.reverse.return_value = PlaceSuggestion("Norway,", "Bergen", "stub")
 
         assert CachingGeocoder(inner, cache).reverse(60.0, 5.0) is not None
@@ -198,6 +203,7 @@ class TestOutagesAreNotCached:
     def test_a_failure_is_reported_as_no_suggestion(self, tmp_path):
         inner = mock.MagicMock()
         inner.name = "stub"
+        inner.cache_fingerprint = "aaaa1111"
         inner.reverse.side_effect = GeocodeUnavailable("network down")
 
         assert CachingGeocoder(inner, tmp_path / "cache.json").reverse(60.0, 5.0) is None
@@ -206,6 +212,7 @@ class TestOutagesAreNotCached:
         cache = tmp_path / "cache.json"
         inner = mock.MagicMock()
         inner.name = "stub"
+        inner.cache_fingerprint = "aaaa1111"
         inner.reverse.side_effect = [
             GeocodeUnavailable("network down"),
             PlaceSuggestion("Norway,", "Bergen", "stub"),
@@ -219,6 +226,7 @@ class TestOutagesAreNotCached:
         cache = tmp_path / "cache.json"
         inner = mock.MagicMock()
         inner.name = "stub"
+        inner.cache_fingerprint = "aaaa1111"
         inner.reverse.side_effect = GeocodeUnavailable("network down")
 
         CachingGeocoder(inner, cache).reverse(60.0, 5.0)
@@ -324,3 +332,100 @@ class TestReverseZoom:
 
         assert f"zoom={_REVERSE_ZOOM}" in opener.call_args[0][0].full_url
         assert _REVERSE_ZOOM >= 16
+
+
+class TestCacheInvalidation:
+    """A cached answer must not outlive the settings that produced it.
+
+    The cache stores the derived suggestion, not the raw response, so both the
+    reverse-lookup zoom and the address keys the answer is read from decide
+    what a hit means. Neither was in the key, so a live run after the key
+    ordering changed silently returned the previous answers.
+    """
+
+    @staticmethod
+    def _stub(fingerprint, suggestion=None):
+        inner = mock.MagicMock()
+        inner.name = "nominatim"
+        inner.cache_fingerprint = fingerprint
+        inner.reverse.return_value = suggestion or PlaceSuggestion("Norway,", "Bergen", "stub")
+        return inner
+
+    def test_an_entry_from_older_settings_is_not_served(self, tmp_path):
+        """The exact failure seen in the field, in miniature."""
+        cache = tmp_path / "cache.json"
+        old = self._stub("old00000", PlaceSuggestion("Norway,", "Bergen, Skuteviken", "stub"))
+        CachingGeocoder(old, cache).reverse(60.3964, 5.3531)
+
+        new = self._stub("new11111", PlaceSuggestion("Norway,", "Bergen, Skansemyren", "stub"))
+        result = CachingGeocoder(new, cache).reverse(60.3964, 5.3531)
+
+        assert new.reverse.call_count == 1, "should have re-queried, not served the old answer"
+        assert result.location_line2 == "Bergen, Skansemyren"
+
+    def test_superseded_entries_are_dropped_from_the_file(self, tmp_path):
+        cache = tmp_path / "cache.json"
+        CachingGeocoder(self._stub("old00000"), cache).reverse(60.0, 5.0)
+
+        CachingGeocoder(self._stub("new11111"), cache).reverse(60.0, 5.0)
+
+        keys = json.loads(cache.read_text(encoding="utf-8"))
+        assert not any("old00000" in key for key in keys)
+
+    def test_another_backend_is_left_alone(self, tmp_path):
+        """One file holds both backends; a blanket sweep would delete the other."""
+        cache = tmp_path / "cache.json"
+        cache.write_text(
+            json.dumps(
+                {
+                    "geonames:ffff9999:60.0,5.0": {
+                        "location_line1": "Norway,",
+                        "location_line2": "Ulriken",
+                        "source": "geonames",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        CachingGeocoder(self._stub("new11111"), cache).reverse(60.0, 5.0)
+
+        assert "geonames:ffff9999:60.0,5.0" in json.loads(cache.read_text(encoding="utf-8"))
+
+    def test_the_same_settings_still_hit_the_cache(self, tmp_path):
+        """Invalidation must not defeat caching for an unchanged configuration."""
+        cache = tmp_path / "cache.json"
+        CachingGeocoder(self._stub("same0000"), cache).reverse(60.0, 5.0)
+
+        second = self._stub("same0000")
+        CachingGeocoder(second, cache).reverse(60.0, 5.0)
+
+        assert second.reverse.call_count == 0
+
+
+class TestFingerprint:
+    """What the fingerprint is derived from, rather than its literal value."""
+
+    def test_the_zoom_is_part_of_it(self, monkeypatch):
+        before = NominatimGeocoder().cache_fingerprint
+        monkeypatch.setattr("entomology_labels.geocoding._REVERSE_ZOOM", 14)
+
+        assert NominatimGeocoder().cache_fingerprint != before
+
+    def test_the_place_key_order_is_part_of_it(self, monkeypatch):
+        """Reordering changes the answer without changing the request."""
+        from entomology_labels.geocoding import _PLACE_KEYS
+
+        before = NominatimGeocoder().cache_fingerprint
+        monkeypatch.setattr("entomology_labels.geocoding._PLACE_KEYS", tuple(reversed(_PLACE_KEYS)))
+
+        assert NominatimGeocoder().cache_fingerprint != before
+
+    def test_it_is_stable_across_instances(self):
+        assert NominatimGeocoder().cache_fingerprint == NominatimGeocoder().cache_fingerprint
+
+    def test_the_backends_do_not_collide(self):
+        assert NominatimGeocoder().cache_fingerprint != GeoNamesGeocoder("u").cache_fingerprint
+
+    def test_it_is_short_enough_to_read_in_a_key(self):
+        assert len(NominatimGeocoder().cache_fingerprint) == 8
