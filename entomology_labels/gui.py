@@ -13,7 +13,9 @@ import tkinter as tk
 import webbrowser
 from collections import Counter
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog
+from tkinter import font as tkfont
+from tkinter import messagebox, ttk
 from typing import Optional
 
 from .config import (
@@ -29,6 +31,7 @@ from .config import (
     MAX_LABELS_PER_GENERATOR,
     PREVIEW_SCALE_FACTOR,
 )
+from .fit import MM_PER_POINT
 from .input_handlers import load_data
 from .label_generator import Label, LabelConfig, LabelGenerator, expand_label
 from .layout import STYLE_SPACER, render_label_lines
@@ -59,6 +62,51 @@ def _bind_mousewheel(widget, canvas) -> None:
 
     for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
         widget.bind(sequence, _on_wheel)
+
+
+# A preview line should occupy only the space its text occupies on paper. A
+# tk.Label adds a border and internal padding by default, which is about a
+# third of a line at preview scale, so it is turned off.
+_PREVIEW_LINE_KW = {"bd": 0, "padx": 0, "pady": 0, "highlightthickness": 0}
+
+
+def _preview_font_px(config: LabelConfig, scale: float, measure=None) -> int:
+    """Pick a preview font size whose lines match the printed line height.
+
+    tkinter reads a negative font size as a height in pixels, which is what
+    makes the text commensurate with a box measured in scaled millimetres.
+    A font's rendered line height exceeds its nominal size by an amount that
+    varies with the face, so rather than guess a factor, ask the font for its
+    own metrics and step down until a line fits.
+
+    Args:
+        config: Layout configuration
+        scale: Preview pixels per millimetre
+        measure: Returns the rendered line height for a pixel size. Defaults
+            to querying tkinter; injectable so the sizing logic can be tested
+            without a display.
+
+    Returns:
+        A positive pixel size; pass it to tkinter negated
+    """
+    target_px = config.font_size_pt * config.line_spacing * MM_PER_POINT * scale
+    px = max(1, int(round(config.font_size_pt * MM_PER_POINT * scale)))
+
+    if measure is None:
+
+        def measure(size: int) -> int:
+            return tkfont.Font(family=config.font_family, size=-size).metrics("linespace")
+
+    while px > 1:
+        try:
+            linespace = measure(px)
+        except tk.TclError:  # pragma: no cover - no font server available
+            break
+        if linespace <= target_px:
+            break
+        px -= 1
+
+    return px
 
 
 class EntomologyLabelsGUI:
@@ -911,20 +959,27 @@ class EntomologyLabelsGUI:
                         highlightthickness=1,
                     )
                     l_frame.grid(row=r, column=c)
-                    l_frame.grid_propagate(False)
+                    # pack_propagate, not grid_propagate: the content frame
+                    # below is packed, and grid_propagate only governs
+                    # grid-managed children. With the wrong one the frame
+                    # shrink-wraps its text and the mm dimensions above are
+                    # silently discarded.
+                    l_frame.pack_propagate(False)
 
                     # Add content
-                    font_size = max(4, int(config.font_size_pt * scale / 3))
+                    font_px = _preview_font_px(config, scale)
+                    pad = max(1, int(round(config.label_padding_mm * scale)))
                     content_frame = tk.Frame(l_frame, bg="white")
-                    content_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+                    content_frame.pack(fill=tk.BOTH, expand=True, padx=pad, pady=pad)
 
                     for line in render_label_lines(label, config):
                         if line.style == STYLE_SPACER:
                             tk.Label(
                                 content_frame,
                                 text="",
-                                font=(config.font_family, font_size // 2),
+                                font=(config.font_family, -max(1, font_px // 2)),
                                 bg="white",
+                                **_PREVIEW_LINE_KW,
                             ).pack()  # Spacer
                             continue
                         style = ("italic",) if line.italic else ()
@@ -933,11 +988,12 @@ class EntomologyLabelsGUI:
                             text=line.text,
                             font=(
                                 config.font_family,
-                                max(1, int(font_size * line.scale)),
+                                -max(1, int(round(font_px * line.scale))),
                                 *style,
                             ),
                             bg="white",
                             anchor="w",
+                            **_PREVIEW_LINE_KW,
                         ).pack(fill=tk.X)
                 else:
                     # Empty cell
