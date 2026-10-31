@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-31
+
 ### Added
 - `photos scan` and `photos probe`: read collection dates and GPS from field
   photographs, group them into collection sites, and write a draft registry.
@@ -95,6 +97,26 @@ All notable changes to this project are documented here. The format follows
 - Release workflow: the manual-run tag is no longer interpolated into a shell
   script, releases are built from the tagged commit, a tag that does not match
   the package version fails the run, and only the release job can write.
+- CSV and tab-separated text are read with the standard library, so the bare
+  install reads them as the README says; pandas was required before. An
+  unterminated quote is reported with its line instead of swallowing the rest
+  of the file, and Excel's Windows-1252 CSV export is accepted. `.xls`
+  workbooks work: the `excel` extra now includes `xlrd`.
+- `--label-kind both` keeps each locality/determination pair on one sheet,
+  leaving a blank slot when a pair would start on the last slot of a page.
+- GUI: the preview draws the page at its real size with its margins, and wraps
+  labels the way the printed page does, instead of an idealised grid. Applying
+  the Configuration tab no longer resets text overflow, label padding and the
+  spacer line, derives the orientation from the page size, and warns when the
+  grid does not fit. Exporting asks to apply unapplied settings first and
+  writes from a copy of the labels, so editing during a long PDF export cannot
+  change the file being written.
+- Release workflow: the test suite gates publishing, a failed GUI build is no
+  longer hidden, and actions are pinned by commit (kept current by Dependabot).
+- The install instructions in the README and the release notes pointed at
+  PyPI, where the package is not published, so they failed. They now install
+  from GitHub.
+- CI runs the GUI tests under a virtual display instead of skipping them.
 
 ## [1.2.0]
 

@@ -11,13 +11,26 @@ Labels are paired: a locality label, and a determination label to pin below it.
 ## Install
 
 ```bash
-pip install 'entomology-labels[all]'
+pip install 'entomology-labels[all] @ git+https://github.com/Camponotus-vagus/entomology-labels'
 ```
 
-The `[all]` extra pulls in Excel, Word, PDF and photo-metadata support. Install
-the bare package if you only need HTML and CSV. PDF output needs system
-libraries for weasyprint; if that is awkward, generate HTML and print it from a
-browser instead.
+The package is installed straight from GitHub, so git must be installed; it is
+not published on PyPI. This installs the latest code on `main`. To install a
+particular release instead, add its tag at the end of the address
+(`...entomology-labels@vX.Y.Z'`); each
+[release](https://github.com/Camponotus-vagus/entomology-labels/releases) page
+gives the exact command, along with ready-made binaries for Linux, macOS and
+Windows.
+
+The `[all]` extra pulls in Excel, Word, PDF and photo-metadata support. If you
+only need CSV, TXT and JSON input and HTML output, leave it out:
+
+```bash
+pip install 'entomology-labels @ git+https://github.com/Camponotus-vagus/entomology-labels'
+```
+
+PDF output needs system libraries for weasyprint; if that is awkward, generate
+HTML and print it from a browser instead.
 
 ## Print some labels
 
@@ -122,6 +135,11 @@ entomology-labels generate more.csv -o more.html --config sheet.json
 ```
 
 A `label_config.json` in the working directory is picked up automatically.
+
+When settings come from more than one place, the command line wins: individual
+flags, then `--preset`, then the configuration file, then the defaults. A
+preset given with `--config` therefore replaces the file's label size and font;
+to adjust a saved layout, pass only the flags you want to change.
 
 ## Warnings
 

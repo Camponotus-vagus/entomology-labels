@@ -160,3 +160,22 @@ class TestBuildSheet:
     def test_an_unknown_kind_is_rejected(self):
         with pytest.raises(ValueError, match="label kind"):
             build_sheet([_label()], "sideways")
+
+
+class TestPairsStayOnOneSheet:
+    def test_a_pair_never_straddles_a_page(self):
+        from entomology_labels.label_generator import LabelConfig, LabelGenerator
+
+        config = LabelConfig(labels_per_row=3, labels_per_column=1)
+        generator = LabelGenerator(config)
+        records = [_label(code=f"N{i}", species="x") for i in range(4)]
+        generator.add_labels(build_sheet(records, KIND_BOTH, config.labels_per_page))
+
+        for page in range(generator.total_pages):
+            codes = [lab.code for lab in generator.get_labels_for_page(page) if not lab.is_empty()]
+            assert len(codes) % 2 == 0, codes  # each code appears as a whole pair
+            assert codes[::2] == codes[1::2]
+
+    def test_even_pages_need_no_blanks(self):
+        sheet = build_sheet([_label(code=f"N{i}") for i in range(5)], KIND_BOTH, 4)
+        assert not any(label.is_empty() for label in sheet)

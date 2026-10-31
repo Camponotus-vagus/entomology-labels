@@ -269,7 +269,6 @@ class TestReviewRegressions:
         assert "Page 3 of 3" in (tmp_path / "s.html").read_text(encoding="utf-8")
 
     def test_site_column_without_sites_file_warns(self, runner, tmp_path):
-        pytest.importorskip("pandas")
         source = tmp_path / "s.csv"
         source.write_text("site,code\nFLOYEN,N1\n", encoding="utf-8")
         result = runner.invoke(cli, ["generate", str(source), "-o", str(tmp_path / "o.html")])

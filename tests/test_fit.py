@@ -212,3 +212,22 @@ class TestCaseInsensitiveSettings:
     def test_capitalised_orientation_is_not_a_mismatch(self):
         warnings = check_page_fit(LabelConfig(orientation="Landscape"))
         assert not any(w.kind == KIND_ORIENTATION_MISMATCH for w in warnings)
+
+
+class TestPrintedColumns:
+    def test_a_grid_that_fits_keeps_its_columns(self):
+        from entomology_labels.fit import printed_columns
+
+        assert printed_columns(LabelConfig()) == 10
+
+    def test_a_grid_wider_than_the_page_wraps(self):
+        from entomology_labels.fit import printed_columns
+
+        config = LabelConfig(labels_per_row=12, label_width_mm=29.0, page_width_mm=297.0)
+        assert printed_columns(config) == 10
+
+    def test_margins_take_columns_away(self):
+        from entomology_labels.fit import printed_columns
+
+        config = LabelConfig(margin_left_mm=10.0, margin_right_mm=10.0)
+        assert printed_columns(config) == 9
