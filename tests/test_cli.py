@@ -204,3 +204,74 @@ class TestProbeElevation:
         output = self._probe_output(tmp_path, 312.2, exif_builder)
 
         assert "312.2" in output
+
+
+class TestReviewRegressions:
+    def test_photos_group_exists_when_run_as_a_module(self):
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "entomology_labels.cli", "photos", "--help"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "scan" in result.stdout
+
+    def test_a_json_draft_is_refused(self, runner, tmp_path):
+        result = runner.invoke(
+            cli, ["photos", "scan", str(tmp_path), "-o", str(tmp_path / "d.json")]
+        )
+        assert result.exit_code != 0
+        assert "Use .yaml or .yml" in result.output
+
+    def test_output_cannot_overwrite_the_input(self, runner, tmp_path):
+        docx = pytest.importorskip("docx")
+        source = tmp_path / "in.docx"
+        document = docx.Document()
+        table = document.add_table(rows=2, cols=2)
+        table.cell(0, 0).text, table.cell(0, 1).text = "location1", "code"
+        table.cell(1, 0).text, table.cell(1, 1).text = "Italia", "N1"
+        document.save(source)
+        before = source.read_bytes()
+
+        result = runner.invoke(cli, ["generate", str(source), "-o", str(source)])
+
+        assert result.exit_code != 0
+        assert "overwrite" in result.output
+        assert source.read_bytes() == before
+
+    def test_sequence_reads_label_config_json(self, runner, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "label_config.json").write_text(
+            json.dumps({"labels_per_row": 3, "labels_per_column": 4}), encoding="utf-8"
+        )
+        result = runner.invoke(
+            cli,
+            [
+                "sequence",
+                "--location1",
+                "a",
+                "--location2",
+                "b",
+                "--prefix",
+                "N",
+                "--start",
+                "1",
+                "--end",
+                "30",
+                "-o",
+                "s.html",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Page 3 of 3" in (tmp_path / "s.html").read_text(encoding="utf-8")
+
+    def test_site_column_without_sites_file_warns(self, runner, tmp_path):
+        pytest.importorskip("pandas")
+        source = tmp_path / "s.csv"
+        source.write_text("site,code\nFLOYEN,N1\n", encoding="utf-8")
+        result = runner.invoke(cli, ["generate", str(source), "-o", str(tmp_path / "o.html")])
+        assert result.exit_code == 0
+        assert "no --sites file" in result.output

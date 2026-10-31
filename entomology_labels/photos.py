@@ -97,13 +97,29 @@ class CollectionEvent:
     @property
     def centroid(self) -> Optional[Tuple[float, float]]:
         """Mean position of the photographs that have one."""
-        located = self.positioned_photos
+        located = self._anchoring_photos
         if not located:
             return None
-        return (
-            sum(p.latitude for p in located) / len(located),
-            sum(p.longitude for p in located) / len(located),
-        )
+        # Longitudes are averaged as offsets from the first one, then wrapped,
+        # so a site straddling the antimeridian (179.99 and -179.99) is centred
+        # there rather than at 0 on the far side of the globe.
+        reference = located[0].longitude
+        offsets = [((p.longitude - reference + 180.0) % 360.0) - 180.0 for p in located]
+        longitude = reference + sum(offsets) / len(offsets)
+        longitude = ((longitude + 180.0) % 360.0) - 180.0
+        return (sum(p.latitude for p in located) / len(located), longitude)
+
+    @property
+    def _anchoring_photos(self) -> List[PhotoRecord]:
+        """Photographs that decide where the event is.
+
+        Undated photographs are attached to the first event only because they
+        cannot be placed in time; they say nothing about where that event
+        happened, so their positions are used only if no dated one has any.
+        """
+        located = self.positioned_photos
+        dated = [p for p in located if p.taken_at is not None]
+        return dated or located
 
     @property
     def spread_m(self) -> float:
@@ -114,7 +130,7 @@ class CollectionEvent:
         return max(
             (
                 haversine_m(centre[0], centre[1], p.latitude, p.longitude)
-                for p in self.positioned_photos
+                for p in self._anchoring_photos
             ),
             default=0.0,
         )
@@ -279,6 +295,11 @@ def _tags_to_photo(tags: Mapping[str, Any], source: str) -> PhotoRecord:
             longitude = _bounded(longitude, LONGITUDE_MIN, LONGITUDE_MAX, "longitude")
             if latitude is None or longitude is None:
                 latitude = longitude = None
+            elif latitude == 0.0 and longitude == 0.0:
+                # Exactly 0,0 is what receivers write before they have a fix,
+                # not a collecting site in the Gulf of Guinea.
+                logger.warning(f"{source}: GPS position 0,0 treated as no fix")
+                latitude = longitude = None
 
     if "GPS GPSAltitude" in tags:
         try:
@@ -382,19 +403,28 @@ def find_photos(roots: Sequence[Path], *, limit: int = MAX_PHOTOS_PER_SCAN) -> L
         Photograph paths, sorted by name so a scan is reproducible
     """
     found: List[Path] = []
+    seen = set()
+
+    def add(path: Path) -> None:
+        # Overlapping roots (a folder and one of its subfolders) must not
+        # count the same photograph twice.
+        key = os.path.realpath(path)
+        if key not in seen:
+            seen.add(key)
+            found.append(path)
 
     for root in roots:
         root = Path(root)
         if root.is_file():
             if root.suffix.lower() in PHOTO_EXTENSIONS:
-                found.append(root)
+                add(root)
             continue
 
         for directory, subdirs, names in os.walk(root, followlinks=False):
             subdirs.sort()
             for name in sorted(names):
                 if Path(name).suffix.lower() in PHOTO_EXTENSIONS:
-                    found.append(Path(directory) / name)
+                    add(Path(directory) / name)
                     if len(found) >= limit:
                         logger.warning(f"stopping at {limit} photos; some were not scanned")
                         return sorted(found)
@@ -494,7 +524,21 @@ def _event_id(event: CollectionEvent, index: int) -> str:
     when = event.date
     if when is None:
         return f"SITE{index}"
-    return f"S{when:%Y%m%d}{chr(ord('A') + (index - 1) % 26)}"
+    return f"S{when:%Y%m%d}{_letters(index)}"
+
+
+def _letters(index: int) -> str:
+    """Spreadsheet-style letters for a 1-based index: A..Z, AA, AB, ...
+
+    Wrapping back to A after Z would give two events the same id, and the
+    draft keys sites by id, so the later one would silently replace the
+    earlier.
+    """
+    letters = ""
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        letters = chr(ord("A") + remainder) + letters
+    return letters
 
 
 def scan_photos(

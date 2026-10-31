@@ -131,7 +131,7 @@ def check_page_fit(config: "LabelConfig") -> List[FitWarning]:
         )
 
     page_is_landscape = config.page_width_mm > config.page_height_mm
-    if page_is_landscape != (config.orientation == "landscape"):
+    if page_is_landscape != config.is_landscape:
         warnings.append(
             FitWarning(
                 KIND_ORIENTATION_MISMATCH,
@@ -201,7 +201,7 @@ def check_label_fit(
                 continue
             seen.add(line.text)
             likely = width > available
-            if config.text_overflow == "wrap":
+            if config.text_overflow.lower() == "wrap":
                 # Wrapped text is not lost, but it costs a line, which can
                 # push whatever follows off the bottom of the label.
                 consequence = (

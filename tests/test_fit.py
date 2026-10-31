@@ -206,3 +206,9 @@ class TestConfigurableSpacing:
     def test_negative_padding_is_rejected(self):
         with pytest.raises(ValueError, match="label_padding_mm"):
             LabelConfig(label_padding_mm=-1.0)
+
+
+class TestCaseInsensitiveSettings:
+    def test_capitalised_orientation_is_not_a_mismatch(self):
+        warnings = check_page_fit(LabelConfig(orientation="Landscape"))
+        assert not any(w.kind == KIND_ORIENTATION_MISMATCH for w in warnings)

@@ -181,7 +181,9 @@ def _generate_html_content(generator: LabelGenerator) -> str:
         align-content: flex-start;
     }}
 
-    .page:last-child {{
+    /* A class rather than :last-child, which never matched: the script
+       element after the last page is the body's last child. */
+    .page.last-page {{
         page-break-after: auto;
     }}
 
@@ -203,7 +205,18 @@ def _generate_html_content(generator: LabelGenerator) -> str:
 
     .location-line {{
         font-size: {config.font_size_pt}pt;
+    }}
+
+    /* Every line, not only the locality: a long species name or note is as
+       likely to overflow as a place name. */
+    .label-content > div {{
         {overflow_css}
+    }}
+
+    /* A blank slot keeps its line height, as it does in Word; an empty div
+       would otherwise collapse and shift the rest of the label upwards. */
+    .label-content > div:empty {{
+        min-height: {config.font_size_pt * config.line_spacing}pt;
     }}
 
     .empty-line {{
@@ -315,9 +328,11 @@ def _generate_html_content(generator: LabelGenerator) -> str:
                     label_html = '<div class="label"></div>'
                 labels_html.append(label_html)
 
+        last = page_num == generator.total_pages - 1
+        page_class = "page last-page" if last else "page"
         page_html = f"""
         <div class="page-info no-print">Page {page_num + 1} of {generator.total_pages}</div>
-        <div class="page">
+        <div class="{page_class}">
             {''.join(labels_html)}
         </div>
         """
@@ -414,9 +429,7 @@ def generate_docx(
     try:
         from docx import Document
         from docx.enum.section import WD_ORIENT
-        from docx.enum.table import WD_TABLE_ALIGNMENT
-        from docx.oxml import OxmlElement
-        from docx.oxml.ns import qn
+        from docx.enum.table import WD_ROW_HEIGHT_RULE, WD_TABLE_ALIGNMENT
         from docx.shared import Mm, Pt
     except ImportError:
         raise ImportError(
@@ -427,6 +440,17 @@ def generate_docx(
     path = _prepare_output_path(output_path)
 
     doc = Document()
+
+    # The default style decides the height of every paragraph without a run
+    # of its own -- the spacer, a blank locality line, an empty cell. Left at
+    # Word's 11 pt with spacing after, those lines are far taller than the
+    # label text and push each row past the label stock.
+    normal = doc.styles["Normal"]
+    normal.font.size = Pt(config.font_size_pt)
+    normal.font.name = config.font_family
+    normal.paragraph_format.space_before = Pt(0)
+    normal.paragraph_format.space_after = Pt(0)
+    normal.paragraph_format.line_spacing = config.line_spacing
 
     # Set page size, orientation and margins
     section = doc.sections[0]
@@ -453,18 +477,16 @@ def generate_docx(
         table = doc.add_table(rows=config.labels_per_column, cols=config.labels_per_row)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-        # Set table properties for no spacing
-        tbl = table._tbl
-        tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
-        tblLayout = OxmlElement("w:tblLayout")
-        tblLayout.set(qn("w:type"), "fixed")
-        tblPr.append(tblLayout)
+        _fix_table_geometry(table, config)
 
         grid = generator.get_labels_grid(page_num)
 
         for row_idx, row in enumerate(grid):
             table_row = table.rows[row_idx]
             table_row.height = Mm(config.label_height_mm)
+            # Exactly, not "at least": a row that grows to fit its text no
+            # longer lines up with the label stock below it.
+            table_row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
 
             for col_idx, label in enumerate(row):
                 cell = table_row.cells[col_idx]
@@ -501,6 +523,39 @@ def generate_docx(
     return path
 
 
+def _fix_table_geometry(table, config) -> None:
+    """Pin a label table to the label size, as the HTML output draws it.
+
+    Args:
+        table: A python-docx table, one cell per label
+        config: Layout configuration
+    """
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Mm
+
+    # Fixed layout with explicit grid columns: Word sizes a table by its grid,
+    # not by each cell's preferred width, so without these every column comes
+    # out at python-docx's default width instead of the label's.
+    table.autofit = False
+    for column in table.columns:
+        column.width = Mm(config.label_width_mm)
+
+    tblPr = table._tbl.tblPr
+    tblPr.get_or_add_tblLayout().set(qn("w:type"), "fixed")
+
+    # Label padding, as the HTML applies it. Margins are in twentieths of a
+    # point; elements go in schema order, which Word enforces.
+    padding = str(round(config.label_padding_mm / 25.4 * 1440))
+    cell_margins = OxmlElement("w:tblCellMar")
+    for side in ("top", "left", "bottom", "right"):
+        margin = OxmlElement(f"w:{side}")
+        margin.set(qn("w:w"), padding)
+        margin.set(qn("w:type"), "dxa")
+        cell_margins.append(margin)
+    tblPr.insert_element_before(cell_margins, "w:tblLook", "w:tblCaption", "w:tblDescription")
+
+
 def _set_table_borders(table):
     """Set light borders on all table cells."""
     try:
@@ -519,4 +574,7 @@ def _set_table_borders(table):
         border.set(qn("w:color"), "CCCCCC")
         tblBorders.append(border)
 
-    tbl.tblPr.append(tblBorders)
+    # Schema order: borders come before shading, layout, cell margins and look.
+    tbl.tblPr.insert_element_before(
+        tblBorders, "w:shd", "w:tblLayout", "w:tblCellMar", "w:tblLook", "w:tblCaption"
+    )

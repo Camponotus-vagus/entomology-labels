@@ -46,8 +46,49 @@ def _sanitize_string(value: str) -> str:
     if not value:
         return ""
 
-    # Remove null bytes and control characters except newlines, tabs, carriage returns
-    return "".join(c for c in str(value) if c in "\n\r\t" or (ord(c) >= 32 and ord(c) != 127))
+    # A label field is one printed line. Line breaks and tabs become spaces:
+    # HTML would fold them into a space anyway, but Word turns a newline into
+    # a real line break, so the two outputs would disagree on label height.
+    # Control characters, lone surrogates and the U+FFFE/U+FFFF non-characters
+    # are dropped: none can be printed, and the last two kinds make the HTML
+    # write or the Word document fail outright.
+    text = str(value).replace("\r\n", " ")
+    return "".join(
+        " " if c in "\n\r\t" else c
+        for c in text
+        if c in "\n\r\t" or _is_printable_code_point(ord(c))
+    )
+
+
+def _is_printable_code_point(code: int) -> bool:
+    """Whether a code point can appear in label text."""
+    if code < 32 or 0x7F <= code <= 0x9F:
+        return False
+    if 0xD800 <= code <= 0xDFFF:
+        return False
+    return code not in (0xFFFE, 0xFFFF)
+
+
+# Field types checked before the range checks, so that a configuration file
+# with "10" or 2.5 for a count, or a string where a size belongs, is rejected
+# here rather than crashing later -- or reaching the generated <style> block.
+_INT_FIELDS = ("labels_per_row", "labels_per_column")
+_FLOAT_FIELDS = (
+    "label_width_mm",
+    "label_height_mm",
+    "page_width_mm",
+    "page_height_mm",
+    "margin_top_mm",
+    "margin_bottom_mm",
+    "margin_left_mm",
+    "margin_right_mm",
+    "font_size_pt",
+    "line_spacing",
+    "label_padding_mm",
+)
+_STR_FIELDS = ("font_family", "orientation", "text_overflow")
+PAGE_MM_MAX = 2000.0
+LINE_SPACING_MAX = 5.0
 
 
 @dataclass
@@ -104,12 +145,55 @@ class LabelConfig:
         """Validate configuration values after initialization."""
         self._validate()
 
+    def _validate_types(self) -> None:
+        """Reject values of the wrong type before any range is compared.
+
+        Raises:
+            ValueError: If a field holds a value of the wrong type
+        """
+        for name in _INT_FIELDS:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{name} must be a whole number, got {value!r}")
+        for name in _FLOAT_FIELDS:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a number, got {value!r}")
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be a finite number, got {value!r}")
+        for name in _STR_FIELDS:
+            value = getattr(self, name)
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be text, got {value!r}")
+        if not isinstance(self.spacer_line, bool):
+            raise ValueError(f"spacer_line must be true or false, got {self.spacer_line!r}")
+
+    def _validate_page(self) -> None:
+        """Check the page size and line spacing, which have no other bound.
+
+        Raises:
+            ValueError: If either is zero, negative or absurdly large
+        """
+        for name in ("page_width_mm", "page_height_mm"):
+            value = getattr(self, name)
+            if not (0 < value <= PAGE_MM_MAX):
+                raise ValueError(f"{name} must be above 0 and at most {PAGE_MM_MAX}, got {value}")
+        if not (0 < self.line_spacing <= LINE_SPACING_MAX):
+            raise ValueError(
+                f"line_spacing must be above 0 and at most {LINE_SPACING_MAX}, "
+                f"got {self.line_spacing}"
+            )
+
     def _validate(self) -> None:
         """Validate all configuration values are within safe bounds.
 
         Raises:
             ValueError: If any configuration value is out of bounds
         """
+        self._validate_types()
+
+        self._validate_page()
+
         if not (LABELS_PER_ROW_MIN <= self.labels_per_row <= LABELS_PER_ROW_MAX):
             raise ValueError(
                 f"labels_per_row must be between {LABELS_PER_ROW_MIN} and "
@@ -155,7 +239,7 @@ class LabelConfig:
                 f"margin_right_mm must be between {MARGIN_MM_MIN} and "
                 f"{MARGIN_MM_MAX}, got {self.margin_right_mm}"
             )
-        if not re.match(FONT_FAMILY_PATTERN, self.font_family):
+        if not re.fullmatch(FONT_FAMILY_PATTERN, self.font_family):
             raise ValueError(
                 f"font_family must match {FONT_FAMILY_PATTERN} "
                 f"(letters, digits, spaces, underscores and hyphens), "

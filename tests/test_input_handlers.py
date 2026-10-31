@@ -177,3 +177,81 @@ class TestShippedExamples:
         }
 
         assert "Bergen, Fløyen" in localities
+
+
+class TestTabularCellsReadAsText:
+    """Spreadsheet cells come through exactly as written."""
+
+    def _load(self, tmp_path, text, name="t.csv"):
+        pytest.importorskip("pandas")
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        return load_data(path)
+
+    def test_numeric_code_with_a_blank_cell_is_not_a_float(self, tmp_path):
+        labels = self._load(tmp_path, "location1,code,elevation\nIt,,\nIt,5,310\n")
+        assert labels[1].code == "5"
+        assert labels[1].elevation == "310"
+
+    def test_leading_zeros_survive(self, tmp_path):
+        assert self._load(tmp_path, "location1,code\nIt,007\n")[0].code == "007"
+
+    def test_na_is_namibia_not_a_missing_value(self, tmp_path):
+        labels = self._load(tmp_path, "location1,location2,code\nNA,Windhoek,N1\n")
+        assert labels[0].location_line1 == "NA"
+
+    def test_duplicate_headings_are_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="Duplicate column"):
+            self._load(tmp_path, "Code,code,location1\nA,B,C\n")
+
+    def test_utf8_bom_is_accepted(self, tmp_path):
+        pytest.importorskip("pandas")
+        path = tmp_path / "bom.csv"
+        path.write_bytes("﻿location1,code\nIt,N1\n".encode("utf-8"))
+        assert load_data(path)[0].location_line1 == "It"
+
+
+class TestCountParsing:
+    def test_whole_float_is_accepted(self):
+        assert _parse_count("5.0") == 5
+
+    @pytest.mark.parametrize("value", ["2.7", "-0.5", "inf", "1e400", "nan", True])
+    def test_non_counts_are_rejected(self, value):
+        with pytest.raises(ValueError):
+            _parse_count(value)
+
+
+class TestTxtFormatDetection:
+    def test_a_time_does_not_switch_to_key_value(self, tmp_path):
+        path = tmp_path / "simple.txt"
+        path.write_text("Italia\nRoma\nN1\n15.vi.2024\ncaught at 12:30\n", encoding="utf-8")
+        labels = load_data(path)
+        assert labels[0].code == "N1"
+        assert labels[0].additional_info == "caught at 12:30"
+
+    def test_key_value_blocks_split_on_whitespace_lines(self, tmp_path):
+        path = tmp_path / "kv.txt"
+        path.write_text("location1: a\ncode: 1\n  \nlocation1: b\ncode: 2\n", encoding="utf-8")
+        assert [label.location_line1 for label in load_data(path)] == ["a", "b"]
+
+    def test_bom_does_not_hide_the_first_key(self, tmp_path):
+        path = tmp_path / "kv.txt"
+        path.write_bytes("﻿location1: a\ncode: 1\n".encode("utf-8"))
+        assert load_data(path)[0].location_line1 == "a"
+
+
+class TestStructuredShape:
+    @pytest.mark.parametrize("body", ["null", '{"labels": {"a": 1}}', '["text"]'])
+    def test_malformed_documents_raise_value_error(self, tmp_path, body):
+        path = tmp_path / "bad.json"
+        path.write_text(body, encoding="utf-8")
+        if body == "null":
+            assert load_data(path) == []
+        else:
+            with pytest.raises(ValueError):
+                load_data(path)
+
+    def test_json_with_bom_loads(self, tmp_path):
+        path = tmp_path / "bom.json"
+        path.write_bytes('﻿[{"code": "N1"}]'.encode("utf-8"))
+        assert load_data(path)[0].code == "N1"

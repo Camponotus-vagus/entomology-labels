@@ -12,12 +12,14 @@ import threading
 import tkinter as tk
 import webbrowser
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 from tkinter import filedialog
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 from typing import Optional
 
+from . import __version__
 from .config import (
     FONT_SIZE_PT_MAX,
     FONT_SIZE_PT_MIN,
@@ -27,6 +29,7 @@ from .config import (
     LABEL_WIDTH_MM_MIN,
     MARGIN_MM_MAX,
     MARGIN_MM_MIN,
+    MAX_COPIES_PER_ENTRY,
     MAX_DISPLAYED_LABELS,
     MAX_LABELS_PER_GENERATOR,
     PREVIEW_SCALE_FACTOR,
@@ -514,29 +517,49 @@ class EntomologyLabelsGUI:
 
     def _add_label(self):
         """Add a label from the form."""
+        qty_str = self.entry_vars["quantity"].get().strip()
         try:
-            qty_str = self.entry_vars["quantity"].get().strip()
             quantity = int(qty_str) if qty_str else 1
-            if quantity <= 0:
-                quantity = 1
         except ValueError:
-            quantity = 1
+            quantity = 0
+        # Checked before any copy is made: a typo of 5000000 would otherwise
+        # freeze the window building millions of labels, then fail part way.
+        if not 1 <= quantity <= MAX_COPIES_PER_ENTRY:
+            messagebox.showerror(
+                "Error", f"Quantity must be a whole number from 1 to {MAX_COPIES_PER_ENTRY}."
+            )
+            return
 
-        label = Label(
-            location_line1=self.entry_vars["location1"].get(),
-            location_line2=self.entry_vars["location2"].get(),
-            code=self.entry_vars["code"].get(),
-            date=self.entry_vars["date"].get(),
-            additional_info=self.entry_vars["notes"].get(),
-        )
+        form = {
+            "location_line1": self.entry_vars["location1"].get(),
+            "location_line2": self.entry_vars["location2"].get(),
+            "code": self.entry_vars["code"].get(),
+            "date": self.entry_vars["date"].get(),
+            "additional_info": self.entry_vars["notes"].get(),
+        }
+        editing_index = self._editing_index
+        if editing_index is not None and editing_index < len(self.generator.labels):
+            # The form shows five fields; the label may carry more (species,
+            # coordinates, collector, its determination-label kind). Start
+            # from the original so saving an edit does not erase them.
+            label = replace(self.generator.labels[editing_index], **form)
+        else:
+            label = Label(**form)
 
         if label.is_empty():
             messagebox.showwarning("Warning", "Please fill at least one field for the label.")
             return
 
+        if editing_index is None or editing_index >= len(self.generator.labels):
+            if len(self.generator.labels) + quantity > MAX_LABELS_PER_GENERATOR:
+                messagebox.showerror(
+                    "Error",
+                    f"Maximum label count ({MAX_LABELS_PER_GENERATOR}) exceeded.",
+                )
+                return
+
         copies = expand_label(label, quantity)
 
-        editing_index = self._editing_index
         if editing_index is not None and editing_index < len(self.generator.labels):
             # Saving an edit: replace the original in place, keeping its position
             if len(self.generator.labels) - 1 + quantity > MAX_LABELS_PER_GENERATOR:
@@ -782,18 +805,15 @@ class EntomologyLabelsGUI:
         new_labels = []
         for idx in indices:
             if idx < len(self.generator.labels):
-                label = self.generator.labels[idx]
-                new_labels.append(
-                    Label(
-                        location_line1=label.location_line1,
-                        location_line2=label.location_line2,
-                        code=label.code,
-                        date=label.date,
-                        additional_info=label.additional_info,
-                    )
-                )
+                # A full copy: rebuilding from the five form fields would drop
+                # species, coordinates, collector and the label kind.
+                new_labels.append(replace(self.generator.labels[idx]))
 
-        self.generator.add_labels(new_labels)
+        try:
+            self.generator.add_labels(new_labels)
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+            return
         self._update_labels_tree()
         self._update_status(f"Duplicated {len(new_labels)} label(s)")
         self._refresh_preview_if_visible()
@@ -1126,11 +1146,13 @@ class EntomologyLabelsGUI:
                     date=vars["date"].get(),
                 )
                 self.generator.add_labels(labels)
-                self._update_labels_tree()
-                self._update_status(f"Generated {len(labels)} sequential labels")
-                dialog.destroy()
             except ValueError as e:
-                messagebox.showerror("Input Error", f"Invalid numeric values:\n{str(e)}")
+                messagebox.showerror("Input Error", str(e))
+                return
+            self._update_labels_tree()
+            self._update_status(f"Generated {len(labels)} sequential labels")
+            self._refresh_preview_if_visible()
+            dialog.destroy()
 
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=len(fields), column=0, columnspan=2, pady=25)
@@ -1164,8 +1186,8 @@ TIPS:
 
     def _show_about(self):
         """Show about dialog."""
-        about_text = """Entomology Labels Generator
-Version 1.2.0
+        about_text = f"""Entomology Labels Generator
+Version {__version__}
 
 A professional tool for biological specimen labeling.
 
