@@ -248,7 +248,9 @@ class EntomologyLabelsGUI:
             self.entry_vars[var_name] = var
             if var_name == "quantity":
                 var.set("1")
-            entry = ttk.Entry(left_frame, textvariable=var)
+            # A modest minimum width; the fields still stretch to fill the pane,
+            # but the form no longer crowds the list at the smallest window.
+            entry = ttk.Entry(left_frame, textvariable=var, width=14)
             entry.grid(row=i, column=1, sticky=tk.EW, pady=5, padx=(5, 0))
             # Enter adds the label from any field, so a run of specimens can
             # be typed without reaching for the mouse.
@@ -304,7 +306,10 @@ class EntomologyLabelsGUI:
 
         # Buttons under treeview
         tree_btn_frame = ttk.Frame(right_frame)
-        tree_btn_frame.pack(fill=tk.X, pady=(5, 0))
+        # side=BOTTOM, before the tree: packed after the tree without it, the
+        # bar landed beside the list, and its width squeezed the form pane
+        # until its fields and the Clear Form button were cut off.
+        tree_btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(5, 0), before=self.labels_tree)
 
         ttk.Button(
             tree_btn_frame, text="Remove Selected", command=self._remove_selected_label
@@ -313,15 +318,19 @@ class EntomologyLabelsGUI:
             tree_btn_frame, text="Duplicate Selected", command=self._duplicate_selected_label
         ).pack(side=tk.LEFT, padx=2)
 
-        # Paging controls, so every label stays reachable however many there are
+        # Paging controls, so every label stays reachable however many there
+        # are. A row of their own: the counter grows to "Showing 99501-100000
+        # of 100000", and beside the action buttons it pushed them off-screen.
+        page_frame = ttk.Frame(right_frame)
+        page_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(5, 0), before=tree_btn_frame)
         self.tree_next_button = ttk.Button(
-            tree_btn_frame, text="Next >", command=lambda: self._change_tree_page(1)
+            page_frame, text="Next >", command=lambda: self._change_tree_page(1)
         )
         self.tree_next_button.pack(side=tk.RIGHT, padx=2)
-        self.tree_page_label = ttk.Label(tree_btn_frame, text="No labels")
+        self.tree_page_label = ttk.Label(page_frame, text="No labels")
         self.tree_page_label.pack(side=tk.RIGHT, padx=8)
         self.tree_prev_button = ttk.Button(
-            tree_btn_frame, text="< Prev", command=lambda: self._change_tree_page(-1)
+            page_frame, text="< Prev", command=lambda: self._change_tree_page(-1)
         )
         self.tree_prev_button.pack(side=tk.RIGHT, padx=2)
 
