@@ -11,8 +11,12 @@ Labels are paired: a locality label, and a determination label to pin below it.
 ## Install
 
 ```bash
-pip install 'entomology-labels[all]'
+pip install 'entomology-labels[all] @ git+https://github.com/Camponotus-vagus/entomology-labels'
 ```
+
+The package is installed straight from GitHub, so git must be installed; it is
+not published on PyPI. Ready-made binaries for Linux, macOS and Windows are
+attached to each [release](https://github.com/Camponotus-vagus/entomology-labels/releases).
 
 The `[all]` extra pulls in Excel, Word, PDF and photo-metadata support. Install
 the bare package if you only need HTML and CSV. PDF output needs system

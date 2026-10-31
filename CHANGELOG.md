@@ -109,9 +109,11 @@ All notable changes to this project are documented here. The format follows
   grid does not fit. Exporting asks to apply unapplied settings first and
   writes from a copy of the labels, so editing during a long PDF export cannot
   change the file being written.
-- Release workflow: the test suite gates publishing, a missing PyPI token fails
-  the run instead of skipping the upload, a failed GUI build is no longer
-  hidden, and actions are pinned by commit (kept current by Dependabot).
+- Release workflow: the test suite gates publishing, a failed GUI build is no
+  longer hidden, and actions are pinned by commit (kept current by Dependabot).
+- The install instructions in the README and the release notes pointed at
+  PyPI, where the package is not published, so they failed. They now install
+  from GitHub.
 - CI runs the GUI tests under a virtual display instead of skipping them.
 
 ## [1.2.0]

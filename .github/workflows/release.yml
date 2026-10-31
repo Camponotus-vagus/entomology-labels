@@ -266,10 +266,12 @@ jobs:
 
             ### Installation
 
-            #### From PyPI (recommended)
+            #### With pip
             ```bash
-            pip install 'entomology-labels[all]'
+            pip install 'entomology-labels[all] @ git+https://github.com/${{ github.repository }}@${{ steps.tag.outputs.tag }}'
             ```
+            This installs this release straight from GitHub (git must be
+            installed); the package is not published on PyPI.
             The `[all]` extra adds Excel and YAML input, Word and PDF output,
             and reading dates and coordinates from photo metadata. Without it
             the package reads CSV, TXT and JSON and writes HTML.
@@ -313,11 +315,11 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          # The release notes tell people to install from PyPI, so a release
-          # that skipped the upload must not look like a successful one.
+          # Optional: the project is distributed from GitHub, not PyPI. The
+          # upload runs only once a token is configured.
           if [ -z "$TWINE_PASSWORD" ]; then
-            echo "::error::PYPI_API_TOKEN is not set; the package was not published to PyPI"
-            exit 1
+            echo "::notice::PYPI_API_TOKEN is not set; skipping the PyPI upload"
+            exit 0
           fi
           # --skip-existing already tolerates a re-uploaded version; anything
           # else (bad token, network, invalid metadata) must fail the job
