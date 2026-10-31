@@ -14,7 +14,7 @@ from typing import Any, List, Mapping, Union
 
 from ..config import MAX_COPIES_PER_ENTRY, MAX_FILE_SIZE_BYTES
 from ..label_generator import Label, expand_label
-from ..sites import has_sites, labels_from_rows, parse_sites
+from ..sites import has_sites, labels_from_rows, load_yaml_document, parse_sites
 
 logger = logging.getLogger(__name__)
 
@@ -553,14 +553,14 @@ def load_yaml(file_path: Path) -> List[Label]:
     Same structure as JSON format.
     """
     try:
-        import yaml
+        import yaml  # noqa: F401  (checked here for a clear message)
     except ImportError:
         raise ImportError(
             "PyYAML is required for YAML support. " "Install with: pip install pyyaml"
         )
 
     content = file_path.read_text(encoding="utf-8-sig")
-    data = yaml.safe_load(content)
+    data = load_yaml_document(content)
 
     if isinstance(data, dict):
         items = data.get("labels", data.get("data", []))

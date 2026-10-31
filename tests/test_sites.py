@@ -210,3 +210,49 @@ class TestStandaloneRegistry:
 
         with pytest.raises(ValueError, match="no sites"):
             load_site_registry(path)
+
+
+class TestYamlAliasExpansion:
+    """Anchors are fine; anchors that multiply a document out of all proportion are not."""
+
+    @staticmethod
+    def _nested_aliases(levels):
+        lines = ["a0: &a0 [x, x, x, x, x, x, x, x, x]"]
+        for i in range(1, levels + 1):
+            lines.append(f"a{i}: &a{i} [" + ", ".join([f"*a{i - 1}"] * 9) + "]")
+        lines.append(f"labels:\n  - {{code: N1, location_line1: *a{levels}}}")
+        return "\n".join(lines) + "\n"
+
+    def test_an_alias_bomb_is_rejected_before_it_is_expanded(self, tmp_path):
+        from entomology_labels.input_handlers import load_data
+
+        path = tmp_path / "bomb.yaml"
+        path.write_text(self._nested_aliases(7), encoding="utf-8")  # under 500 bytes
+        with pytest.raises(ValueError, match="aliases"):
+            load_data(path)
+
+    def test_a_repeated_long_string_is_rejected(self):
+        from entomology_labels.sites import load_yaml_document
+
+        text = f"s: &s {'x' * 200_000}\nrows: [" + ", ".join(["*s"] * 50) + "]\n"
+        with pytest.raises(ValueError, match="aliases"):
+            load_yaml_document(text)
+
+    def test_ordinary_anchor_reuse_still_loads(self, tmp_path):
+        from entomology_labels.input_handlers import load_data
+
+        path = tmp_path / "anchors.yaml"
+        path.write_text(
+            "place: &bergen {location_line1: 'Norway, Vestland,', location_line2: Bergen}\n"
+            "labels:\n"
+            "  - {<<: *bergen, code: N1}\n"
+            "  - {<<: *bergen, code: N2}\n",
+            encoding="utf-8",
+        )
+        assert [label.location_line2 for label in load_data(path)] == ["Bergen", "Bergen"]
+
+    def test_a_site_registry_is_checked_too(self, tmp_path):
+        path = tmp_path / "sites.yaml"
+        path.write_text(self._nested_aliases(7).replace("labels:", "junk:"), encoding="utf-8")
+        with pytest.raises(ValueError, match="aliases"):
+            load_site_registry(path)

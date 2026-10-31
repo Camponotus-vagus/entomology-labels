@@ -257,6 +257,52 @@ def labels_from_rows(
     return labels
 
 
+# YAML anchors let a few hundred bytes describe a structure billions of
+# values large once every alias is followed ("billion laughs"). safe_load
+# only builds shared references, so parsing is cheap; the blow-up comes later,
+# when a field is turned into text. A document may therefore expand to at
+# most this many times its own size, or YAML_EXPANSION_FLOOR, whichever is
+# larger: generous for real anchor reuse, far below any bomb.
+YAML_EXPANSION_FACTOR = 10
+YAML_EXPANSION_FLOOR = 1_000_000
+
+
+def load_yaml_document(text: str) -> Any:
+    """Parse YAML safely, refusing documents that aliases inflate.
+
+    Raises:
+        ValueError: If the expanded document is out of proportion to the text
+    """
+    import yaml
+
+    data = yaml.safe_load(text)
+    limit = max(YAML_EXPANSION_FACTOR * len(text), YAML_EXPANSION_FLOOR)
+    sizes: Dict[int, int] = {}
+
+    def expanded(node: Any) -> int:
+        # Memoised by identity, so a shared node is measured once even though
+        # it is counted every time it is referenced.
+        if isinstance(node, (list, dict)):
+            if id(node) not in sizes:
+                children = node.items() if isinstance(node, dict) else enumerate(node)
+                total = 1
+                for key, value in children:
+                    total += (expanded(key) if isinstance(node, dict) else 0) + expanded(value)
+                    if total > limit:
+                        break
+                sizes[id(node)] = total
+            return sizes[id(node)]
+        return len(node) if isinstance(node, str) else 1
+
+    try:
+        too_large = expanded(data) > limit
+    except RecursionError:
+        too_large = True
+    if too_large:
+        raise ValueError("YAML document expands to an unreasonable size through its aliases")
+    return data
+
+
 def load_site_registry(path) -> Dict[str, Site]:
     """Load a standalone site registry from a YAML or JSON file.
 
@@ -279,10 +325,10 @@ def load_site_registry(path) -> Dict[str, Site]:
 
     if registry_path.suffix.lower() in (".yaml", ".yml"):
         try:
-            import yaml
+            import yaml  # noqa: F401
         except ImportError:
             raise ValueError("PyYAML is required to read a YAML site registry")
-        data = yaml.safe_load(text)
+        data = load_yaml_document(text)
     else:
         import json
 
