@@ -123,6 +123,11 @@ entomology-labels generate more.csv -o more.html --config sheet.json
 
 A `label_config.json` in the working directory is picked up automatically.
 
+When settings come from more than one place, the command line wins: individual
+flags, then `--preset`, then the configuration file, then the defaults. A
+preset given with `--config` therefore replaces the file's label size and font;
+to adjust a saved layout, pass only the flags you want to change.
+
 ## Warnings
 
 Before writing output, the tool checks that the labels fit and says so if they

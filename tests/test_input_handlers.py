@@ -104,7 +104,6 @@ class TestLoaderEdgeCases:
         assert any(label.code == "N1" for label in labels)
 
     def test_zero_is_not_treated_as_missing(self, tmp_path):
-        pytest.importorskip("pandas")
 
         path = tmp_path / "labels.csv"
         path.write_text("location_line1,code,date\nItalia,0,2024\n", encoding="utf-8")
@@ -114,15 +113,12 @@ class TestLoaderEdgeCases:
         assert labels[0].code == "0"
 
     def test_malformed_csv_reports_its_own_error(self, tmp_path):
-        pytest.importorskip("pandas")
-        import pandas as pd
-
         path = tmp_path / "broken.csv"
         path.write_text('location_line1,code\n"Italia,N1\n', encoding="utf-8")
 
-        # The comma-parse failure is the real one, and it must not be masked
-        # by a second attempt with a different delimiter.
-        with pytest.raises(pd.errors.ParserError):
+        # An unterminated quote is reported with its line, not read as a
+        # field that swallows the rest of the file.
+        with pytest.raises(ValueError, match="broken.csv, line"):
             load_data(path)
 
 
@@ -183,7 +179,6 @@ class TestTabularCellsReadAsText:
     """Spreadsheet cells come through exactly as written."""
 
     def _load(self, tmp_path, text, name="t.csv"):
-        pytest.importorskip("pandas")
         path = tmp_path / name
         path.write_text(text, encoding="utf-8")
         return load_data(path)
@@ -205,7 +200,6 @@ class TestTabularCellsReadAsText:
             self._load(tmp_path, "Code,code,location1\nA,B,C\n")
 
     def test_utf8_bom_is_accepted(self, tmp_path):
-        pytest.importorskip("pandas")
         path = tmp_path / "bom.csv"
         path.write_bytes("﻿location1,code\nIt,N1\n".encode("utf-8"))
         assert load_data(path)[0].location_line1 == "It"
@@ -255,3 +249,55 @@ class TestStructuredShape:
         path = tmp_path / "bom.json"
         path.write_bytes('﻿[{"code": "N1"}]'.encode("utf-8"))
         assert load_data(path)[0].code == "N1"
+
+
+class TestCsvWithoutPandas:
+    """CSV and TSV are read with the standard library, so a bare install works."""
+
+    def _without_pandas(self, monkeypatch):
+        import sys
+
+        monkeypatch.setitem(sys.modules, "pandas", None)
+
+    def test_csv_loads_without_pandas(self, tmp_path, monkeypatch):
+        self._without_pandas(monkeypatch)
+        path = tmp_path / "t.csv"
+        path.write_text("location1,code,count\nIt,N1,2\n", encoding="utf-8")
+        assert [label.code for label in load_data(path)] == ["N1", "N1"]
+
+    def test_tsv_text_loads_without_pandas(self, tmp_path, monkeypatch):
+        self._without_pandas(monkeypatch)
+        path = tmp_path / "t.txt"
+        path.write_text("location1\tcode\nIt\tN1\n", encoding="utf-8")
+        assert load_data(path)[0].code == "N1"
+
+    def test_semicolon_csv(self, tmp_path):
+        path = tmp_path / "t.csv"
+        path.write_text("location1;code\nRoma, Lazio;N1\n", encoding="utf-8")
+        labels = load_data(path)
+        assert (labels[0].location_line1, labels[0].code) == ("Roma, Lazio", "N1")
+
+    def test_windows_1252_export(self, tmp_path):
+        path = tmp_path / "t.csv"
+        path.write_bytes("location1,code\nForlì,N1\n".encode("cp1252"))
+        assert load_data(path)[0].location_line1 == "Forlì"
+
+    def test_short_rows_are_padded(self, tmp_path):
+        path = tmp_path / "t.csv"
+        path.write_text("location1,code,date\nIt,N1\n", encoding="utf-8")
+        labels = load_data(path)
+        assert (labels[0].code, labels[0].date) == ("N1", "")
+
+    def test_empty_file_has_no_labels(self, tmp_path):
+        path = tmp_path / "t.csv"
+        path.write_text("", encoding="utf-8")
+        assert load_data(path) == []
+
+
+class TestExcelStillReadsAsText:
+    def test_xlsx_numeric_code_and_blank(self, tmp_path):
+        pd = pytest.importorskip("pandas")
+        pytest.importorskip("openpyxl")
+        path = tmp_path / "t.xlsx"
+        pd.DataFrame({"location1": ["It", "It"], "code": [None, 5]}).to_excel(path, index=False)
+        assert [label.code for label in load_data(path)] == ["", "5"]

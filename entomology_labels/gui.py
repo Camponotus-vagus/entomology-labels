@@ -34,7 +34,7 @@ from .config import (
     MAX_LABELS_PER_GENERATOR,
     PREVIEW_SCALE_FACTOR,
 )
-from .fit import MM_PER_POINT
+from .fit import MM_PER_POINT, check_page_fit, printed_columns
 from .input_handlers import load_data
 from .label_generator import Label, LabelConfig, LabelGenerator, expand_label
 from .layout import STYLE_SPACER, render_label_lines
@@ -873,15 +873,22 @@ class EntomologyLabelsGUI:
                     raise ValueError(f"{name} must be at most {max_val}")
                 return val
 
-            config = LabelConfig(
+            # replace(), not a fresh LabelConfig: the form has no fields for
+            # text overflow, label padding or the spacer line, and rebuilding
+            # would silently reset them to their defaults.
+            page_width = get_float("page_width_mm", 10.0, 500.0)
+            page_height = get_float("page_height_mm", 10.0, 500.0)
+            config = replace(
+                self.generator.config,
+                orientation="landscape" if page_width > page_height else "portrait",
                 labels_per_row=get_int("labels_per_row", 1, 50),
                 labels_per_column=get_int("labels_per_column", 1, 50),
                 label_width_mm=get_float("label_width_mm", LABEL_WIDTH_MM_MIN, LABEL_WIDTH_MM_MAX),
                 label_height_mm=get_float(
                     "label_height_mm", LABEL_HEIGHT_MM_MIN, LABEL_HEIGHT_MM_MAX
                 ),
-                page_width_mm=get_float("page_width_mm", 10.0, 500.0),
-                page_height_mm=get_float("page_height_mm", 10.0, 500.0),
+                page_width_mm=page_width,
+                page_height_mm=page_height,
                 margin_top_mm=get_float("margin_top_mm", MARGIN_MM_MIN, MARGIN_MM_MAX),
                 margin_bottom_mm=get_float("margin_bottom_mm", MARGIN_MM_MIN, MARGIN_MM_MAX),
                 margin_left_mm=get_float("margin_left_mm", MARGIN_MM_MIN, MARGIN_MM_MAX),
@@ -890,12 +897,40 @@ class EntomologyLabelsGUI:
                 font_size_pt=get_float("font_size_pt", FONT_SIZE_PT_MIN, FONT_SIZE_PT_MAX),
                 line_spacing=get_float("line_spacing", 0.1, 5.0),
             )
-            self.generator.config = config
-            self._update_labels_tree()
-            self._update_status("Configuration applied")
-            self._update_preview()
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid value in configuration:\n{str(e)}")
+            return False
+
+        self.generator.config = config
+        self._update_labels_tree()
+        self._update_status("Configuration applied")
+        self._update_preview()
+
+        # The command line reports these before writing; the GUI said nothing,
+        # so a grid wider than the page printed differently from the preview.
+        warnings = check_page_fit(config)
+        if warnings:
+            messagebox.showwarning(
+                "Layout", "\n\n".join(w.message for w in warnings), parent=self.root
+            )
+        return True
+
+    def _config_form_differs(self) -> bool:
+        """Whether the Configuration tab holds edits not yet applied."""
+        config = self.generator.config
+        for name, var in self.config_vars.items():
+            current = getattr(config, name, None)
+            text = var.get().strip()
+            if isinstance(current, str):
+                if text != current:
+                    return True
+                continue
+            try:
+                if float(text) != float(current):
+                    return True
+            except (TypeError, ValueError):
+                return True
+        return False
 
     def _apply_preset(self, preset_name: str):
         """Apply a preset configuration."""
@@ -939,6 +974,9 @@ class EntomologyLabelsGUI:
             widget.destroy()
 
         if not self.generator.labels:
+            # Let the frame shrink back to fit the message.
+            self.paper_frame.pack_propagate(True)
+            self.paper_frame.grid_propagate(True)
             lbl = ttk.Label(self.paper_frame, text="No labels to preview.", padding=50)
             lbl.pack()
             return
@@ -962,70 +1000,86 @@ class EntomologyLabelsGUI:
         # Scale the preview so a page fits on screen
         scale = PREVIEW_SCALE_FACTOR
 
+        # The page is drawn at its real size, margins included, and labels
+        # wrap the way the printed (flex-wrapped) page wraps them. Without the
+        # fixed size the frame shrink-wrapped the grid, so a grid wider than
+        # the page, or margins, never showed.
         self.paper_frame.config(
             width=config.page_width_mm * scale, height=config.page_height_mm * scale, bg="white"
         )
+        self.paper_frame.grid_propagate(False)
+        sheet = self.preview_sheet = tk.Frame(self.paper_frame, bg="white")
+        sheet.grid(
+            row=0,
+            column=0,
+            sticky="nw",
+            padx=(int(config.margin_left_mm * scale), int(config.margin_right_mm * scale)),
+            pady=(int(config.margin_top_mm * scale), int(config.margin_bottom_mm * scale)),
+        )
 
-        for r, row_labels in enumerate(grid):
-            for c, label in enumerate(row_labels):
-                if label:
-                    # Create a "label" box
-                    l_frame = tk.Frame(
-                        self.paper_frame,
-                        width=config.label_width_mm * scale,
-                        height=config.label_height_mm * scale,
-                        bg="white",
-                        highlightbackground="#eee",
-                        highlightthickness=1,
-                    )
-                    l_frame.grid(row=r, column=c)
-                    # pack_propagate, not grid_propagate: the content frame
-                    # below is packed, and grid_propagate only governs
-                    # grid-managed children. With the wrong one the frame
-                    # shrink-wraps its text and the mm dimensions above are
-                    # silently discarded.
-                    l_frame.pack_propagate(False)
+        columns = printed_columns(config)
+        font_px = _preview_font_px(config, scale)
+        cells = [label for row_labels in grid for label in row_labels]
 
-                    # Add content
-                    font_px = _preview_font_px(config, scale)
-                    pad = max(1, int(round(config.label_padding_mm * scale)))
-                    content_frame = tk.Frame(l_frame, bg="white")
-                    content_frame.pack(fill=tk.BOTH, expand=True, padx=pad, pady=pad)
+        for index, label in enumerate(cells):
+            r, c = divmod(index, columns)
+            if label and not label.is_empty():
+                # Create a "label" box
+                l_frame = tk.Frame(
+                    sheet,
+                    width=config.label_width_mm * scale,
+                    height=config.label_height_mm * scale,
+                    bg="white",
+                    highlightbackground="#eee",
+                    highlightthickness=1,
+                )
+                l_frame.grid(row=r, column=c)
+                # pack_propagate, not grid_propagate: the content frame
+                # below is packed, and grid_propagate only governs
+                # grid-managed children. With the wrong one the frame
+                # shrink-wraps its text and the mm dimensions above are
+                # silently discarded.
+                l_frame.pack_propagate(False)
 
-                    for line in render_label_lines(label, config):
-                        if line.style == STYLE_SPACER:
-                            tk.Label(
-                                content_frame,
-                                text="",
-                                font=(config.font_family, -max(1, font_px // 2)),
-                                bg="white",
-                                **_PREVIEW_LINE_KW,
-                            ).pack()  # Spacer
-                            continue
-                        style = ("italic",) if line.italic else ()
+                # Add content
+                pad = max(1, int(round(config.label_padding_mm * scale)))
+                content_frame = tk.Frame(l_frame, bg="white")
+                content_frame.pack(fill=tk.BOTH, expand=True, padx=pad, pady=pad)
+
+                for line in render_label_lines(label, config):
+                    if line.style == STYLE_SPACER:
                         tk.Label(
                             content_frame,
-                            text=line.text,
-                            font=(
-                                config.font_family,
-                                -max(1, int(round(font_px * line.scale))),
-                                *style,
-                            ),
+                            text="",
+                            font=(config.font_family, -max(1, font_px // 2)),
                             bg="white",
-                            anchor="w",
                             **_PREVIEW_LINE_KW,
-                        ).pack(fill=tk.X)
-                else:
-                    # Empty cell
-                    l_frame = tk.Frame(
-                        self.paper_frame,
-                        width=config.label_width_mm * scale,
-                        height=config.label_height_mm * scale,
-                        bg="#fafafa",
-                        highlightbackground="#f0f0f0",
-                        highlightthickness=1,
-                    )
-                    l_frame.grid(row=r, column=c)
+                        ).pack()  # Spacer
+                        continue
+                    style = ("italic",) if line.italic else ()
+                    tk.Label(
+                        content_frame,
+                        text=line.text,
+                        font=(
+                            config.font_family,
+                            -max(1, int(round(font_px * line.scale))),
+                            *style,
+                        ),
+                        bg="white",
+                        anchor="w",
+                        **_PREVIEW_LINE_KW,
+                    ).pack(fill=tk.X)
+            else:
+                # Empty cell
+                l_frame = tk.Frame(
+                    sheet,
+                    width=config.label_width_mm * scale,
+                    height=config.label_height_mm * scale,
+                    bg="#fafafa",
+                    highlightbackground="#f0f0f0",
+                    highlightthickness=1,
+                )
+                l_frame.grid(row=r, column=c)
 
         # Update scrollregion
         self.root.update_idletasks()
@@ -1050,6 +1104,17 @@ class EntomologyLabelsGUI:
         if not self.generator.labels:
             messagebox.showinfo("Info", "No labels to export.")
             return
+
+        if self._config_form_differs():
+            answer = messagebox.askyesnocancel(
+                "Unapplied settings",
+                "The Configuration tab has changes that are not applied yet.\n\n"
+                "Apply them before exporting?",
+            )
+            if answer is None:
+                return
+            if answer and not self._apply_config():
+                return
 
         filetypes = {
             "html": [("HTML File", "*.html")],
@@ -1078,6 +1143,12 @@ class EntomologyLabelsGUI:
             "docx": generate_docx,
         }
 
+        # The export runs on a worker thread while the window stays usable;
+        # it gets its own copy so adding, removing or reconfiguring labels
+        # meanwhile cannot change a file half-way through being written.
+        snapshot = LabelGenerator(replace(self.generator.config))
+        snapshot.labels = list(self.generator.labels)
+
         def on_success(_result):
             self._update_status(f"Exported to {Path(file_path).name}")
             logger.info(f"Successfully exported to {file_path}")
@@ -1098,7 +1169,7 @@ class EntomologyLabelsGUI:
             self._update_status("Export failed")
 
         self._run_in_background(
-            lambda: generators[format_type](self.generator, file_path),
+            lambda: generators[format_type](snapshot, file_path),
             on_success,
             on_error,
             status=f"Exporting {format_type.upper()}...",
@@ -1137,12 +1208,17 @@ class EntomologyLabelsGUI:
 
         def generate():
             try:
+                start, end = int(vars["start"].get()), int(vars["end"].get())
+            except ValueError:
+                messagebox.showerror("Input Error", "Start and end must be whole numbers.")
+                return
+            try:
                 labels = self.generator.generate_sequential_labels(
                     location_line1=vars["location1"].get(),
                     location_line2=vars["location2"].get(),
                     code_prefix=vars["prefix"].get(),
-                    start_number=int(vars["start"].get()),
-                    end_number=int(vars["end"].get()),
+                    start_number=start,
+                    end_number=end,
                     date=vars["date"].get(),
                 )
                 self.generator.add_labels(labels)

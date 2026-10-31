@@ -7,7 +7,7 @@ made here once instead of in three places that must be kept in lockstep.
 """
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, List, Sequence
+from typing import TYPE_CHECKING, List, Optional, Sequence
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, typing only
     from .label_generator import Label, LabelConfig
@@ -138,12 +138,17 @@ def _determination_lines(label: "Label") -> List[LabelLine]:
     return lines
 
 
-def build_sheet(labels: Sequence["Label"], kind: str) -> List["Label"]:
+def build_sheet(
+    labels: Sequence["Label"], kind: str, labels_per_page: Optional[int] = None
+) -> List["Label"]:
     """Return the labels to print for a given label kind.
 
     Args:
         labels: The specimen records
         kind: "locality", "determination", or "both"
+        labels_per_page: Slots on one sheet. For "both" with an odd number
+            of slots, a blank is left where a pair would otherwise start on
+            the last slot of one sheet and finish on the next
 
     Returns:
         Labels tagged with how each should render. For "both", each
@@ -165,6 +170,12 @@ def build_sheet(labels: Sequence["Label"], kind: str) -> List["Label"]:
     # locality label would print the same name twice on one pin.
     sheet: List["Label"] = []
     for label in labels:
+        if (
+            labels_per_page
+            and labels_per_page > 1
+            and len(sheet) % labels_per_page == (labels_per_page - 1)
+        ):
+            sheet.append(type(label)())
         sheet.append(replace(label, render_as=KIND_LOCALITY, species=""))
         sheet.append(replace(label, render_as=KIND_DETERMINATION))
     return sheet

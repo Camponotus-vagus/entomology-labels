@@ -86,6 +86,24 @@ def estimate_label_height_mm(label: "Label", config: "LabelConfig") -> float:
     return total_pt * MM_PER_POINT + 2 * config.label_padding_mm
 
 
+def printed_columns(config: "LabelConfig") -> int:
+    """How many labels actually sit side by side on the printed page.
+
+    The HTML page is a wrapping flex box, so a row that does not fit between
+    the margins continues on the next line. Previews must lay labels out
+    the same way, or they show a grid the printer never produces.
+
+    Args:
+        config: Layout configuration
+
+    Returns:
+        Labels per printed row, at least 1 and at most labels_per_row
+    """
+    usable = config.page_width_mm - config.margin_left_mm - config.margin_right_mm
+    fitting = int((usable + DIMENSION_EPSILON_MM) // config.label_width_mm)
+    return max(1, min(config.labels_per_row, fitting))
+
+
 def check_page_fit(config: "LabelConfig") -> List[FitWarning]:
     """Check the label grid against the page it is meant to print on.
 

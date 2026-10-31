@@ -616,7 +616,7 @@ def generate(
         click.echo(f"Layout configuration saved to: {saved_to}")
 
     generator = LabelGenerator(config)
-    generator.add_labels(build_sheet(labels, label_kind))
+    generator.add_labels(build_sheet(labels, label_kind, config.labels_per_page))
 
     if verbose:
         click.echo(f"Configuration: {rows}x{cols} labels per page")
@@ -629,7 +629,10 @@ def generate(
 
     _write_output(generator, output_path, open_after)
 
-    click.echo(f"Generated {generator.total_labels} labels on {generator.total_pages} pages")
+    # Blanks left to keep a locality/determination pair on one sheet are
+    # slots, not labels.
+    printed = sum(1 for label in generator.labels if not label.is_empty())
+    click.echo(f"Generated {printed} labels on {generator.total_pages} pages")
     click.echo(f"Output saved to: {output_path}")
     logger.info(
         f"Successfully generated {generator.total_labels} labels "

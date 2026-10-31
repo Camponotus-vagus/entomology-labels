@@ -208,12 +208,35 @@ def load_excel(file_path: Path) -> List[Label]:
     # column with one blank cell into floats (code 5 printed as "5.0"), drops
     # leading zeros, and reads "NA" (Namibia) as a missing value.
     df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
-    return _dataframe_to_labels(df)
+    return _table_to_labels([list(df.columns)] + df.values.tolist())
 
 
-# Read cells as text, exactly as written; see load_excel. utf-8-sig accepts
-# the byte-order mark spreadsheet programs put at the start of a CSV export.
-_TEXT_CELLS = {"dtype": str, "keep_default_na": False, "encoding": "utf-8-sig"}
+def _read_delimited(file_path: Path, delimiter: str) -> List[List[str]]:
+    """Read a delimited text file into rows of strings.
+
+    The standard library reader, not pandas: CSV is the format people reach
+    for first, and it should not need the optional spreadsheet extra. Every
+    cell stays text exactly as written, as load_excel also ensures.
+
+    utf-8-sig accepts the byte-order mark spreadsheet programs put at the
+    start of an export. Excel's plain "CSV" export on Windows is cp1252,
+    which is tried if the file is not valid UTF-8.
+    """
+    import csv
+
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            with file_path.open(encoding=encoding, newline="") as handle:
+                # strict: an unterminated quote is an error, not a field that
+                # silently swallows the rest of the file.
+                reader = csv.reader(handle, delimiter=delimiter, strict=True)
+                try:
+                    return [row for row in reader]
+                except csv.Error as e:
+                    raise ValueError(f"{file_path.name}, line {reader.line_num}: {e}")
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(f"{file_path.name} is neither UTF-8 nor Windows-1252 text")
 
 
 def load_csv(file_path: Path) -> List[Label]:
@@ -222,20 +245,12 @@ def load_csv(file_path: Path) -> List[Label]:
     Same column expectations as Excel files.
     Supports both comma and semicolon delimiters.
     """
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("pandas is required for CSV support. " "Install with: pip install pandas")
-
-    # Parse as comma-separated, and only retry with semicolons when that
-    # succeeds but collapses into a single column. A genuine parse error is
-    # left to propagate, so the reported message describes the real problem
-    # rather than a second failure on the wrong delimiter.
-    df = pd.read_csv(file_path, delimiter=",", **_TEXT_CELLS)
-    if len(df.columns) == 1:
-        df = pd.read_csv(file_path, delimiter=";", **_TEXT_CELLS)
-
-    return _dataframe_to_labels(df)
+    # Parse as comma-separated, and only retry with semicolons when the
+    # header collapses into a single column (a European-locale export).
+    rows = _read_delimited(file_path, ",")
+    if rows and len(rows[0]) == 1:
+        rows = _read_delimited(file_path, ";")
+    return _table_to_labels(rows)
 
 
 def load_txt(file_path: Path) -> List[Label]:
@@ -263,13 +278,9 @@ def load_txt(file_path: Path) -> List[Label]:
     # Detect format
     if "\t" in lines[0] and ":" not in lines[0]:
         # TSV format
-        try:
-            import pandas as pd
-
-            df = pd.read_csv(file_path, delimiter="\t", **_TEXT_CELLS)
-            return _dataframe_to_labels(df)
-        except Exception:
-            pass
+        rows = _read_delimited(file_path, "\t")
+        if _has_known_column(rows[0]):
+            return _table_to_labels(rows)
 
     # Key-value format only if a line actually starts with a known key. A bare
     # colon is not enough: a time ("12:30") in the simple format would
@@ -559,74 +570,91 @@ def load_yaml(file_path: Path) -> List[Label]:
     return _structured_to_labels(data, items)
 
 
-def _dataframe_to_labels(df) -> List[Label]:
-    """Convert a pandas DataFrame to a list of Labels."""
-    # Normalize column names
-    df.columns = [str(c).strip().lower() for c in df.columns]
-    duplicated = sorted(set(df.columns[df.columns.duplicated()]))
+# Accepted column names per field, in priority order. English names are
+# listed first so that a file carrying both an English and an Italian
+# heading resolves to the English one; the Italian aliases are kept for
+# compatibility with spreadsheets written before the project moved to
+# English, and removing them would break those files.
+_COLUMN_MAP = {
+    "location_line1": [
+        "location_line1",
+        "location1",
+        "location",
+        "loc1",
+        "località1",
+        "localita1",
+    ],
+    "location_line2": [
+        "location_line2",
+        "location2",
+        "loc2",
+        "località2",
+        "localita2",
+    ],
+    "code": ["code", "specimen_code", "specimen_id", "id", "codice"],
+    "date": ["date", "collection_date", "data_raccolta", "data"],
+    "additional_info": ["additional_info", "notes", "info", "note"],
+    "count": ["count", "quantity", "copies", "n", "quantità", "quantita"],
+    "species": ["species", "taxon", "determination", "specie", "determinazione"],
+    "coordinates": ["coordinates", "coords", "latlon", "coordinate"],
+    "elevation": ["elevation", "altitude", "quota", "altitudine"],
+    "collector": ["collector", "leg", "legit", "raccoglitore"],
+    "determiner": ["determiner", "det", "determinatore"],
+    "site": ["site", "site_id", "sito"],
+}
+
+
+def _has_known_column(headers: List[str]) -> bool:
+    """Whether a header row names at least one field this tool reads."""
+    names = {str(h).strip().lower() for h in headers}
+    return any(name in names for aliases in _COLUMN_MAP.values() for name in aliases)
+
+
+def _table_to_labels(rows: List[List[Any]]) -> List[Label]:
+    """Convert a table (header row first, then data rows) to Labels.
+
+    Args:
+        rows: The header row followed by data rows; cells may be any type
+            and missing trailing cells are treated as blank
+
+    Returns:
+        Labels, with count/quantity already expanded
+
+    Raises:
+        ValueError: If two headings collide or a count is invalid
+    """
+    if not rows:
+        return []
+
+    headers = [str(c).strip().lower() for c in rows[0]]
+    duplicated = sorted({h for h in headers if h and headers.count(h) > 1})
     if duplicated:
-        # "Code" and "code" collapse to one name; reading either would be a
-        # guess, and reading both would print a pandas Series on the label.
+        # "Code" and "code" collapse to one name, and reading either would be
+        # a guess.
         raise ValueError(f"Duplicate column heading(s): {', '.join(duplicated)}")
 
-    # Accepted column names per field, in priority order. English names are
-    # listed first so that a file carrying both an English and an Italian
-    # heading resolves to the English one; the Italian aliases are kept for
-    # compatibility with spreadsheets written before the project moved to
-    # English, and removing them would break those files.
-    column_map = {
-        "location_line1": [
-            "location_line1",
-            "location1",
-            "location",
-            "loc1",
-            "località1",
-            "localita1",
-        ],
-        "location_line2": [
-            "location_line2",
-            "location2",
-            "loc2",
-            "località2",
-            "localita2",
-        ],
-        "code": ["code", "specimen_code", "specimen_id", "id", "codice"],
-        "date": ["date", "collection_date", "data_raccolta", "data"],
-        "additional_info": ["additional_info", "notes", "info", "note"],
-        "count": ["count", "quantity", "copies", "n", "quantità", "quantita"],
-        "species": ["species", "taxon", "determination", "specie", "determinazione"],
-        "coordinates": ["coordinates", "coords", "latlon", "coordinate"],
-        "elevation": ["elevation", "altitude", "quota", "altitudine"],
-        "collector": ["collector", "leg", "legit", "raccoglitore"],
-        "determiner": ["determiner", "det", "determinatore"],
-        "site": ["site", "site_id", "sito"],
-    }
-
-    def find_column(possible_names):
-        for name in possible_names:
-            if name in df.columns:
-                return name
-        return None
+    columns = {}
+    for field, aliases in _COLUMN_MAP.items():
+        for name in aliases:
+            if name in headers:
+                columns[field] = headers.index(name)
+                break
 
     labels = []
-    for _, row in df.iterrows():
+    for row in rows[1:]:
         data = {}
-        for field, possibilities in column_map.items():
-            col = find_column(possibilities)
-            if col and col in row:
-                value = row[col]
-                # Only missing values become empty. Testing truthiness here
-                # would also discard a legitimate 0 (a specimen coded "0").
-                if value is None or (hasattr(value, "__float__") and str(value) == "nan"):
-                    data[field] = ""
-                else:
-                    data[field] = str(value).strip()
+        for field, index in columns.items():
+            value = row[index] if index < len(row) else None
+            # Only missing values become empty. Testing truthiness here
+            # would also discard a legitimate 0 (a specimen coded "0").
+            if value is None or (hasattr(value, "__float__") and str(value) == "nan"):
+                data[field] = ""
+            else:
+                data[field] = str(value).strip()
 
         label = Label(**{name: data.get(name, "") for name in Label.CONTENT_FIELDS if name in data})
 
         if not label.is_empty():
-            count = _parse_count(data.get("count"))
-
-            labels.extend(expand_label(label, count))
+            labels.extend(expand_label(label, _parse_count(data.get("count"))))
 
     return labels
