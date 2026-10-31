@@ -238,3 +238,22 @@ class TestGuiBehaviour:
         assert [label.code for label in app.generator.labels] == ["N1"]
         assert app.entry_vars["code"].get() == ""
         assert app.root.focus_get() is app._first_form_entry
+
+    @pytest.mark.parametrize("size", ["900x700", "1100x800"])
+    def test_no_button_on_the_data_tab_is_cut_off(self, app, size):
+        """The list's buttons once sat beside it and squeezed the form."""
+        app.root.geometry(size)
+        app.tree_page_label.config(text="Showing 99501-100000 of 100000")
+        app.root.update()
+
+        def buttons(widget):
+            for child in widget.winfo_children():
+                if child.winfo_class() == "TButton":
+                    yield child
+                yield from buttons(child)
+
+        data_tab = app.notebook.nametowidget(app.notebook.tabs()[0])
+        clipped = [
+            b.cget("text") for b in buttons(data_tab) if b.winfo_width() < b.winfo_reqwidth()
+        ]
+        assert clipped == []
