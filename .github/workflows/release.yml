@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+      # Tag filters are case-sensitive. Without this a 'V1.3.1' tag starts
+      # nothing at all; with it, the verify job below fails and says why.
+      - 'V*'
   workflow_dispatch:
     inputs:
       tag:
@@ -24,6 +27,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
+          if [[ "$RELEASE_TAG" == V* ]]; then
+            echo "::error::'$RELEASE_TAG' starts with a capital V. Release tags use a lowercase v ('v${RELEASE_TAG#V}'): delete this tag and its release, then create the lowercase one."
+            exit 1
+          fi
           if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?$ ]]; then
             echo "::error::'$RELEASE_TAG' is not a version tag such as v1.2.0 or v1.3.0rc1"
             exit 1
