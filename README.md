@@ -15,13 +15,22 @@ pip install 'entomology-labels[all] @ git+https://github.com/Camponotus-vagus/en
 ```
 
 The package is installed straight from GitHub, so git must be installed; it is
-not published on PyPI. Ready-made binaries for Linux, macOS and Windows are
-attached to each [release](https://github.com/Camponotus-vagus/entomology-labels/releases).
+not published on PyPI. This installs the latest code on `main`. To install a
+particular release instead, add its tag at the end of the address
+(`...entomology-labels@vX.Y.Z'`); each
+[release](https://github.com/Camponotus-vagus/entomology-labels/releases) page
+gives the exact command, along with ready-made binaries for Linux, macOS and
+Windows.
 
-The `[all]` extra pulls in Excel, Word, PDF and photo-metadata support. Install
-the bare package if you only need HTML and CSV. PDF output needs system
-libraries for weasyprint; if that is awkward, generate HTML and print it from a
-browser instead.
+The `[all]` extra pulls in Excel, Word, PDF and photo-metadata support. If you
+only need CSV, TXT and JSON input and HTML output, leave it out:
+
+```bash
+pip install 'entomology-labels @ git+https://github.com/Camponotus-vagus/entomology-labels'
+```
+
+PDF output needs system libraries for weasyprint; if that is awkward, generate
+HTML and print it from a browser instead.
 
 ## Print some labels
 
