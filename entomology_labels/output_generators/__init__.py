@@ -488,8 +488,11 @@ def generate_docx(
             # longer lines up with the label stock below it.
             table_row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
 
+            # Fetched once per row: row.cells rebuilds the whole list on every
+            # access, so indexing it per cell made each row O(columns^2).
+            row_cells = table_row.cells
             for col_idx, label in enumerate(row):
-                cell = table_row.cells[col_idx]
+                cell = row_cells[col_idx]
                 cell.width = Mm(config.label_width_mm)
 
                 # Clear default paragraph
@@ -500,17 +503,16 @@ def generate_docx(
                         # The cell already owns an empty first paragraph.
                         paragraph = cell.paragraphs[0] if line_idx == 0 else cell.add_paragraph()
                         run = paragraph.add_run(line.text)
+                        # Font name, size, spacing and line spacing come from
+                        # the Normal style set above. Writing them again on
+                        # every run and paragraph produced the same document
+                        # but was most of the export time (about 36 s for
+                        # 20,000 labels). Only what differs from Normal is set.
                         if line.style != STYLE_SPACER:
-                            run.font.size = Pt(config.font_size_pt * line.scale)
-                            run.font.name = config.font_family
+                            if line.scale != 1:
+                                run.font.size = Pt(config.font_size_pt * line.scale)
                             if line.italic:
                                 run.italic = True
-
-                    # Set paragraph spacing
-                    for p in cell.paragraphs:
-                        p.paragraph_format.space_before = Pt(0)
-                        p.paragraph_format.space_after = Pt(0)
-                        p.paragraph_format.line_spacing = config.line_spacing
 
         # Set cell borders
         _set_table_borders(table)
