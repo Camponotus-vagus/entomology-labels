@@ -9,6 +9,7 @@ from entomology_labels.geocoding import (
     OSM_ATTRIBUTION,
     USER_AGENT,
     CachingGeocoder,
+    GeocodeRefused,
     GeocodeUnavailable,
     GeoNamesGeocoder,
     NominatimGeocoder,
@@ -429,3 +430,53 @@ class TestFingerprint:
 
     def test_it_is_short_enough_to_read_in_a_key(self):
         assert len(NominatimGeocoder().cache_fingerprint) == 8
+
+
+class TestRefusals:
+    """A service that refuses this client is not asked again, nor cached."""
+
+    def test_geonames_error_status_is_not_cached_as_nothing(self, tmp_path):
+        quota = {"status": {"message": "the hourly limit has been exceeded", "value": 19}}
+        cache = tmp_path / "cache.json"
+        geocoder = CachingGeocoder(GeoNamesGeocoder("someone"), cache)
+        with _urlopen_returning(quota):
+            with pytest.raises(GeocodeRefused):
+                geocoder.reverse(60.39, 5.32)
+        assert not cache.exists() or json.loads(cache.read_text()) == {}
+
+    def test_geonames_uses_https(self):
+        from entomology_labels.geocoding import GEONAMES_URL
+
+        assert GEONAMES_URL.startswith("https://")
+
+    def test_a_429_stops_the_remaining_lookups(self):
+        import urllib.error
+
+        events = [
+            CollectionEvent(f"S{i}", [PhotoRecord("p.ORF", latitude=60.0 + i, longitude=5.0)])
+            for i in range(5)
+        ]
+        refusal = urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None)
+        geocoder = CachingGeocoder(NominatimGeocoder(), None)
+        with _urlopen_raising(refusal) as urlopen:
+            results = suggest_for_events(events, geocoder)
+        assert urlopen.call_count == 1
+        assert [suggestion for _, suggestion in results] == [None] * 5
+
+    def test_a_truncated_reply_is_an_outage_not_a_crash(self):
+        import http.client
+
+        with _urlopen_raising(http.client.IncompleteRead(b"")):
+            with pytest.raises(GeocodeUnavailable):
+                NominatimGeocoder().reverse(60.39, 5.32)
+
+    @pytest.mark.parametrize("content", ["[]", '{"nominatim:x:1.0,1.0": {"bogus": 1}}'])
+    def test_a_cache_of_the_wrong_shape_is_ignored(self, tmp_path, content):
+        cache = tmp_path / "cache.json"
+        cache.write_text(content, encoding="utf-8")
+        inner = mock.MagicMock()
+        inner.name = "nominatim"
+        inner.cache_fingerprint.return_value = "x"
+        inner.reverse.return_value = None
+        CachingGeocoder(inner, cache).reverse(1.0, 1.0)
+        assert inner.reverse.call_count == 1

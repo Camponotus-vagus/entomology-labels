@@ -47,6 +47,54 @@ All notable changes to this project are documented here. The format follows
   counts identical labels and the column is named "Copies".
 - English column headings are matched before Italian ones, so a file with a
   `location` column no longer loses to `località1`.
+- Spreadsheet cells are read as text. A numeric column with one blank cell
+  printed `5.0` for code 5 and `310.0` for an elevation; leading zeros were
+  dropped; `NA` (Namibia) was read as a missing value. Duplicate headings
+  (`Code` and `code`) are now an error instead of a garbled label.
+- Counts must be whole numbers: `2.7` is rejected instead of printing 2, and
+  `inf` no longer crashes the loader.
+- A plain-text label file containing a colon (a time, `12:30`) is no longer
+  mistaken for the key/value format, which lost every field. Key/value blocks
+  separated by a whitespace-only line no longer merge, and a UTF-8 byte-order
+  mark no longer hides the first key. JSON and YAML accept the mark too.
+- Layout settings are type-checked: a configuration file with `"10"` for a
+  count, a zero or negative page size, zero line spacing or a non-numeric size
+  is rejected. Such values previously reached the generated stylesheet, so an
+  edited configuration file could inject script into the HTML.
+- Word output matches the HTML geometry: columns were 24.6 mm wide whatever
+  the label width, rows grew with their text, blank lines took Word's 11 pt
+  default and label padding was ignored, so lower rows drifted off the label
+  stock. Table properties are written in the order Word's schema requires.
+- In HTML and PDF a blank line keeps its height, so labels in a row line up
+  whether or not a locality line is empty. The text-overflow mode now applies
+  to every line, not only the locality, and the last page no longer forces a
+  trailing page break.
+- Line breaks and tabs inside a field print as spaces in every output, and
+  characters that made the HTML or Word write fail are dropped.
+- `photos scan`: a day with more than 26 sites no longer reuses ids
+  (`...Z`, then `...AA`), which silently overwrote sites in the draft. A site
+  on the antimeridian is centred there, not at longitude 0. A 0,0 GPS reading
+  (no fix) is treated as no position. Undated photographs no longer move a
+  site's coordinates. A folder given together with its subfolder no longer
+  counts photographs twice. A missing exifread is reported once, up front.
+- `--geocode`: GeoNames is queried over HTTPS. Its quota and bad-username
+  replies are no longer cached as "nothing here", and a refusal (HTTP 429/403
+  or a GeoNames error) stops the remaining lookups instead of repeating them
+  against the usage policy. A truncated reply or a malformed cache file no
+  longer aborts the scan.
+- `generate` refuses to write over its input (a `.docx` table could be
+  replaced by the label sheet), warns when rows name a site but no `--sites`
+  file is given, and reports a missing optional dependency without a
+  traceback. `sequence` reads `label_config.json` like `generate` does.
+  `photos scan` no longer accepts a `.json` draft it would write as YAML.
+  `python -m entomology_labels.cli photos` works.
+- GUI: Duplicate and Edit keep species, coordinates, collector and the label
+  kind, which both silently dropped. An out-of-range or non-numeric quantity
+  is an error instead of a silent 1 or a frozen window. The About box reports
+  the installed version.
+- Release workflow: the manual-run tag is no longer interpolated into a shell
+  script, releases are built from the tagged commit, a tag that does not match
+  the package version fails the run, and only the release job can write.
 
 ## [1.2.0]
 

@@ -381,3 +381,46 @@ class TestSixtySecondRounding:
 
         assert record.has_position
         assert record.latitude == pytest.approx(60.4)
+
+
+class TestReviewRegressions:
+    def test_more_than_26_events_on_one_day_keep_distinct_ids(self):
+        photos = [_photo(20, 8 + i // 60, i % 60, lat=60.0 + i * 0.01) for i in range(30)]
+        events = cluster_photos(photos)
+        ids = [event.event_id for event in events]
+        assert len(events) == 30
+        assert len(set(ids)) == 30
+        assert ids[25:28] == ["S20260820Z", "S20260820AA", "S20260820AB"]
+
+    def test_a_site_on_the_antimeridian_is_centred_there(self):
+        events = cluster_photos(
+            [_photo(20, 9, 0, lat=-17.0, lon=179.9999), _photo(20, 9, 1, lat=-17.0, lon=-179.9999)]
+        )
+        assert len(events) == 1
+        assert abs(abs(events[0].centroid[1]) - 180.0) < 0.001
+
+    def test_a_zero_zero_fix_is_no_position(self):
+        record = _tags_to_photo(
+            _tags(
+                **{"GPS GPSLatitude": _Tag(_dms(0, 0, 0)), "GPS GPSLongitude": _Tag(_dms(0, 0, 0))}
+            ),
+            "p.ORF",
+        )
+        assert not record.has_position
+
+    def test_an_undated_photo_does_not_move_the_site(self):
+        far_away = PhotoRecord("undated.ORF", latitude=-33.0, longitude=151.0)
+        events = cluster_photos([_photo(20, 9, 0), far_away])
+        lat, lon = events[0].centroid
+        assert (round(lat, 4), round(lon, 4)) == (60.3964, 5.3531)
+        assert far_away in events[0].photos
+
+    def test_overlapping_roots_count_a_photo_once(self, tmp_path, exif_builder):
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "a.ORF").write_bytes(exif_builder())
+        assert len(find_photos([tmp_path, sub])) == 1
+
+    def test_an_ordinary_centroid_is_exact(self):
+        events = cluster_photos([_photo(20, 9, 0, lon=12.34)])
+        assert events[0].centroid[1] == 12.34

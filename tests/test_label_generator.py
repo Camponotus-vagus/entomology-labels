@@ -283,3 +283,37 @@ class TestExpandLabel:
         label = Label(code="N1", additional_info="leg. F. Mensa")
 
         assert generator.expand_label(label, 2) == expand_label(label, 2)
+
+
+class TestConfigTypes:
+    """A configuration file can hold any JSON type; only numbers may pass."""
+
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("labels_per_row", "10"),
+            ("labels_per_row", 2.5),
+            ("labels_per_row", True),
+            ("page_width_mm", "1mm;}</style><script>alert(1)</script><style>x{"),
+            ("page_width_mm", 0),
+            ("page_height_mm", -5),
+            ("page_width_mm", float("nan")),
+            ("line_spacing", 0),
+            ("spacer_line", "false"),
+            ("font_family", "Arial\n"),
+        ],
+    )
+    def test_rejected(self, field, value):
+        with pytest.raises(ValueError):
+            LabelConfig.from_dict({field: value})
+
+    def test_whole_numbers_still_accepted_for_sizes(self):
+        assert LabelConfig(label_width_mm=29, page_width_mm=297).label_width_mm == 29
+
+
+class TestSanitizedText:
+    def test_line_breaks_become_spaces(self):
+        assert Label(location_line1="A\nB\tC\r\nD").location_line1 == "A B C D"
+
+    def test_unprintable_code_points_are_dropped(self):
+        assert Label(code="a\ud800￾\x85b").code == "ab"

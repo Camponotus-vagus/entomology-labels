@@ -21,6 +21,7 @@ lookup, which is ordinary use of a free service rather than bulk querying.
 """
 
 import hashlib
+import http.client
 import json
 import logging
 import time
@@ -50,6 +51,15 @@ class GeocodeUnavailable(Exception):
     """
 
 
+class GeocodeRefused(GeocodeUnavailable):
+    """Raised when the service refuses this client (rate limit, block, quota).
+
+    Asking again for the next site would only repeat the refusal, and keeping
+    on asking is exactly what a usage policy forbids, so the remaining
+    lookups are abandoned.
+    """
+
+
 #: Identifies this tool to the geocoding service, as its usage policy requires.
 USER_AGENT = "entomology-labels/1.2 (+https://github.com/Camponotus-vagus/entomology-labels)"
 
@@ -57,7 +67,8 @@ USER_AGENT = "entomology-labels/1.2 (+https://github.com/Camponotus-vagus/entomo
 OSM_ATTRIBUTION = "Locality suggestions © OpenStreetMap contributors (ODbL)"
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
-GEONAMES_URL = "http://api.geonames.org/findNearbyJSON"
+GEONAMES_URL = "https://secure.geonames.org/findNearbyJSON"
+MAX_RESPONSE_BYTES = 1_000_000
 
 #: Address components to try, in order, for the country/region line.
 _REGION_KEYS = ("state", "province", "region", "county", "state_district")
@@ -252,6 +263,14 @@ class GeoNamesGeocoder:
         if not payload:
             return None
 
+        # GeoNames reports errors -- an exhausted hourly quota, an unknown or
+        # unactivated username -- as an ordinary 200 reply with a status
+        # block. That is not "nothing here", and must not be cached as such.
+        status = payload.get("status")
+        if isinstance(status, dict) and "geonames" not in payload:
+            message = status.get("message", "unknown error")
+            raise GeocodeRefused(f"GeoNames refused the request: {message}")
+
         entries = payload.get("geonames") or []
         if not entries:
             return None
@@ -294,8 +313,13 @@ def _fetch_json(url: str, timeout_s: float, limiter: _RateLimiter) -> Optional[D
 
     try:
         with urllib.request.urlopen(request, timeout=timeout_s) as response:
-            body = response.read()
-    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError) as e:
+            # One reverse lookup is a few kilobytes; a larger body is not one.
+            body = response.read(MAX_RESPONSE_BYTES)
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429):
+            raise GeocodeRefused(f"the locality service refused the request: {e}")
+        raise GeocodeUnavailable(f"could not reach the locality service: {e}")
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
         raise GeocodeUnavailable(f"could not reach the locality service: {e}")
 
     try:
@@ -352,11 +376,16 @@ class CachingGeocoder:
         if not self._cache_path or not self._cache_path.is_file():
             return
         try:
-            self._cache = json.loads(self._cache_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            loaded = json.loads(self._cache_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             logger.debug("locality cache unreadable; starting a new one")
             self._cache = {}
             return
+        if not isinstance(loaded, dict):
+            logger.debug("locality cache has an unexpected shape; starting a new one")
+            self._cache = {}
+            return
+        self._cache = loaded
 
         self._drop_superseded()
 
@@ -395,10 +424,17 @@ class CachingGeocoder:
             cached = self._cache[key]
             if cached is None:
                 return None
-            return PlaceSuggestion(**cached)
+            try:
+                return PlaceSuggestion(**cached)
+            except TypeError:
+                # A hand-edited or foreign entry; ask again rather than crash.
+                logger.debug(f"ignoring malformed cache entry {key}")
+                del self._cache[key]
 
         try:
             suggestion = self._inner.reverse(latitude, longitude)
+        except GeocodeRefused:
+            raise
         except GeocodeUnavailable as e:
             # Not cached: the service may be reachable next time, and caching
             # an outage would mean never asking again.
@@ -450,13 +486,21 @@ def suggest_for_events(events, geocoder) -> List[Tuple[str, Optional[PlaceSugges
         One (event id, suggestion) pair per event; the suggestion may be None
     """
     results = []
+    refused = False
     for event in events:
         centre = event.centroid
         if centre is None:
             results.append((event.event_id, None))
             continue
+        if refused:
+            results.append((event.event_id, None))
+            continue
         try:
             results.append((event.event_id, geocoder.reverse(centre[0], centre[1])))
+        except GeocodeRefused as e:
+            logger.warning(f"{e}; no further localities will be looked up")
+            refused = True
+            results.append((event.event_id, None))
         except GeocodeUnavailable as e:
             logger.warning(f"{e}; leaving the locality blank")
             results.append((event.event_id, None))

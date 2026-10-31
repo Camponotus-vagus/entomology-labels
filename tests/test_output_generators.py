@@ -101,3 +101,55 @@ class TestTextOverflowModes:
         html = self._css_for("wrap")
 
         assert f"padding: {LABEL_PADDING_MM}mm" in html
+
+
+class TestHtmlGeometry:
+    def _html(self, labels, **config):
+        generator = LabelGenerator(LabelConfig(**config))
+        generator.add_labels(labels)
+        return generate_html(generator)
+
+    def test_blank_lines_keep_their_height(self):
+        html = self._html([Label(location_line1="It", code="N1")])
+        assert '<div class="location-line"></div>' in html
+        assert ".label-content > div:empty" in html
+
+    def test_overflow_mode_applies_to_every_line(self):
+        html = self._html([Label(code="N1")], text_overflow="clip")
+        assert ".label-content > div {" in html
+        assert ".location-line {\n        font-size" in html
+
+    def test_only_the_last_page_omits_the_page_break(self):
+        html = self._html(
+            [Label(code=str(i)) for i in range(3)], labels_per_row=1, labels_per_column=1
+        )
+        assert html.count('class="page last-page"') == 1
+        assert html.count('class="page"') == 2
+
+
+class TestDocxGeometry:
+    def test_grid_rows_and_padding_match_the_label(self, tmp_path):
+        pytest.importorskip("docx")
+        import zipfile
+
+        config = LabelConfig(
+            labels_per_row=2,
+            labels_per_column=2,
+            label_width_mm=29.0,
+            label_height_mm=13.0,
+            label_padding_mm=1.0,
+        )
+        generator = LabelGenerator(config)
+        generator.add_labels([Label(code="N1")])
+        path = generate_docx(generator, tmp_path / "out.docx")
+
+        xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8")
+        assert xml.count('<w:gridCol w:w="1644"/>') == 2  # 29 mm in twips
+        assert 'w:hRule="exact"' in xml
+        assert '<w:left w:w="57" w:type="dxa"/>' in xml  # 1 mm padding
+        # Schema order: borders, layout, cell margins, look.
+        order = [
+            xml.index(tag)
+            for tag in ("<w:tblBorders>", "<w:tblLayout", "<w:tblCellMar>", "<w:tblLook")
+        ]
+        assert order == sorted(order)

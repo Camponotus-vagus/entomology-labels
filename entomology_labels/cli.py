@@ -6,6 +6,7 @@ Provides commands for generating labels from various input formats.
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -184,6 +185,10 @@ def _load_labels(input_path: Path) -> list:
     except ValueError as e:
         logger.error(f"Invalid input: {e}")
         raise click.ClickException(f"Invalid input: {e}")
+    except ImportError as e:
+        # A missing optional dependency is a setup problem with a one-line
+        # fix in the message; a traceback would only bury it.
+        raise click.ClickException(str(e))
     except Exception as e:
         logger.exception("Unexpected error loading data")
         raise click.ClickException(f"Error loading data: {e}")
@@ -245,9 +250,12 @@ def _validate_draft_path(output: str) -> Path:
         click.ClickException: If the suffix is not a data format we can write
     """
     path = Path(output).resolve()
-    if path.suffix.lower() not in (".yaml", ".yml", ".json"):
+    # YAML only: the draft carries comments (photo counts, locality
+    # suggestions), which JSON cannot hold, and a .json name would make the
+    # site loader parse the YAML as JSON and fail.
+    if path.suffix.lower() not in (".yaml", ".yml"):
         raise click.ClickException(
-            f"Unsupported draft format: {path.suffix or '(none)'}. Use .yaml, .yml or .json"
+            f"Unsupported draft format: {path.suffix or '(none)'}. Use .yaml or .yml"
         )
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -421,7 +429,7 @@ def _report_fit(generator: LabelGenerator, *, strict: bool = False) -> bool:
     for warning in warnings:
         click.secho(f"warning: {warning}", err=True, fg="yellow")
 
-    if generator.config.text_overflow == "clip":
+    if generator.config.text_overflow.lower() == "clip":
         click.secho(
             "note: --text-overflow=clip discards the trimmed text; "
             "'wrap' keeps it on another line",
@@ -555,9 +563,22 @@ def generate(
     if verbose:
         click.echo(f"Loading data from: {input_path}")
 
+    protected = [input_path] + [Path(p).resolve() for p in (sites_path, config_path) if p]
+    if output_path in protected:
+        # .docx is both an input and an output format: without this check the
+        # source table would be replaced by the label sheet.
+        raise click.ClickException(f"Output would overwrite an input file: {output_path}")
+
     labels = _load_labels(input_path)
     if sites_path:
         labels = _apply_sites(labels, Path(sites_path))
+    elif any(label.site and not (label.location_line1 or label.location_line2) for label in labels):
+        click.secho(
+            "Warning: rows name a site but no --sites file was given; "
+            "their locality, date and coordinates will be blank.",
+            fg="yellow",
+            err=True,
+        )
     _apply_dates(labels, normalize=normalize_dates)
 
     if verbose:
@@ -624,8 +645,8 @@ def generate(
 @click.option("--end", required=True, type=int, help="End number")
 @click.option("--date", default="", help="Collection date")
 @click.option("-o", "--output", required=True, help="Output file path")
-@click.option("--rows", default=10, type=int, help="Labels per row")
-@click.option("--cols", default=13, type=int, help="Labels per column")
+@click.option("--rows", default=None, type=int, help="Labels per row")
+@click.option("--cols", default=None, type=int, help="Labels per column")
 @click.option("--open", "open_after", is_flag=True, help="Open file after generation")
 def sequence(
     location1: str,
@@ -655,7 +676,11 @@ def sequence(
     logger.info(f"Generating sequential labels: {prefix}{start} to {prefix}{end}")
 
     try:
-        config = LabelConfig(labels_per_row=rows, labels_per_column=cols)
+        # Same resolution as generate, so a label_config.json in the working
+        # directory applies here too, as the README says it does.
+        config = resolve_config(
+            None, _layout_overrides(labels_per_row=rows, labels_per_column=cols)
+        )
     except ValueError as e:
         raise click.ClickException(f"Invalid configuration: {e}")
 
@@ -864,13 +889,23 @@ def main():
     cli()
 
 
-if __name__ == "__main__":
-    main()
-
-
 @cli.group()
-def photos():
+@click.pass_context
+def photos(ctx):
     """Read collection dates and coordinates from field photographs."""
+    # click runs this before a subcommand parses its own --help; asking for
+    # help needs no exifread.
+    if ctx.resilient_parsing or "--help" in sys.argv[1:]:
+        return
+    # Checked once, here, rather than per file: otherwise every photograph
+    # reports "could not read" and the real cause scrolls past unseen.
+    try:
+        import exifread  # noqa: F401
+    except ImportError:
+        raise click.ClickException(
+            "exifread is required to read photo metadata. "
+            "Install with: pip install 'entomology-labels[photos]'"
+        )
 
 
 @photos.command("probe")
@@ -1012,5 +1047,11 @@ def photos_scan(
             f"{event.date.date() if event.date else 'undated'}, {where}"
         )
     click.echo(f"\nDraft written to: {output_path}")
-    click.echo("Fill in the locality lines marked TODO, add your specimen codes, then:")
+    click.echo("Fill in the blank locality lines, add your specimen codes, then:")
     click.echo(f"  entomology-labels generate {output_path} -o labels.html")
+
+
+# Last, after every command is registered: run as a script, the module would
+# otherwise dispatch before the photos group below main() exists.
+if __name__ == "__main__":
+    main()

@@ -6,7 +6,9 @@ Supports: Excel (.xlsx, .xls), CSV, TXT, DOCX, JSON, YAML
 
 import json
 import logging
+import math
 import os
+import re
 from pathlib import Path
 from typing import Any, List, Mapping, Union
 
@@ -86,11 +88,20 @@ def _parse_count(value, default: int = 1) -> int:
     if value is None or value == "":
         return default
 
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid count value: {value!r} (expected a number)")
+
     try:
-        count = int(float(str(value).strip()))
+        number = float(str(value).strip())
     except (TypeError, ValueError):
         raise ValueError(f"Invalid count value: {value!r} (expected a number)")
 
+    # A spreadsheet may store 5 as 5.0, which is fine; 2.7 copies is not a
+    # count, and truncating it would print a number nobody asked for.
+    if not math.isfinite(number) or number != int(number):
+        raise ValueError(f"Invalid count value: {value!r} (expected a whole number)")
+
+    count = int(number)
     if count < 0:
         raise ValueError(f"Count cannot be negative: {count}")
 
@@ -193,8 +204,16 @@ def load_excel(file_path: Path) -> List[Label]:
             "Install with: pip install pandas openpyxl"
         )
 
-    df = pd.read_excel(file_path)
+    # Read every cell as text: left to infer types, pandas turns a numeric
+    # column with one blank cell into floats (code 5 printed as "5.0"), drops
+    # leading zeros, and reads "NA" (Namibia) as a missing value.
+    df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
     return _dataframe_to_labels(df)
+
+
+# Read cells as text, exactly as written; see load_excel. utf-8-sig accepts
+# the byte-order mark spreadsheet programs put at the start of a CSV export.
+_TEXT_CELLS = {"dtype": str, "keep_default_na": False, "encoding": "utf-8-sig"}
 
 
 def load_csv(file_path: Path) -> List[Label]:
@@ -212,9 +231,9 @@ def load_csv(file_path: Path) -> List[Label]:
     # succeeds but collapses into a single column. A genuine parse error is
     # left to propagate, so the reported message describes the real problem
     # rather than a second failure on the wrong delimiter.
-    df = pd.read_csv(file_path, delimiter=",")
+    df = pd.read_csv(file_path, delimiter=",", **_TEXT_CELLS)
     if len(df.columns) == 1:
-        df = pd.read_csv(file_path, delimiter=";")
+        df = pd.read_csv(file_path, delimiter=";", **_TEXT_CELLS)
 
     return _dataframe_to_labels(df)
 
@@ -238,7 +257,7 @@ def load_txt(file_path: Path) -> List[Label]:
         code: N2
         date: 15.vi.2024
     """
-    content = file_path.read_text(encoding="utf-8")
+    content = file_path.read_text(encoding="utf-8-sig")
     lines = content.strip().split("\n")
 
     # Detect format
@@ -247,23 +266,54 @@ def load_txt(file_path: Path) -> List[Label]:
         try:
             import pandas as pd
 
-            df = pd.read_csv(file_path, delimiter="\t")
+            df = pd.read_csv(file_path, delimiter="\t", **_TEXT_CELLS)
             return _dataframe_to_labels(df)
         except Exception:
             pass
 
-    # Check for key-value format
-    if ":" in content:
+    # Key-value format only if a line actually starts with a known key. A bare
+    # colon is not enough: a time ("12:30") in the simple format would
+    # otherwise switch parsers and silently lose every field.
+    if any(_KEY_VALUE_LINE.match(line) for line in lines):
         return _parse_key_value_txt(content)
 
     # Simple line-based format
     return _parse_simple_txt(lines)
 
 
+_KEY_VALUE_KEYS = (
+    "location1",
+    "location_line1",
+    "località1",
+    "localita1",
+    "location2",
+    "location_line2",
+    "località2",
+    "localita2",
+    "code",
+    "codice",
+    "specimen_code",
+    "date",
+    "data",
+    "collection_date",
+    "additional_info",
+    "notes",
+    "note",
+    "count",
+    "quantity",
+    "quantità",
+    "quantita",
+)
+_KEY_VALUE_LINE = re.compile(
+    r"^\s*(?:" + "|".join(re.escape(k) for k in _KEY_VALUE_KEYS) + r")\s*:",
+    re.IGNORECASE,
+)
+
+
 def _parse_key_value_txt(content: str) -> List[Label]:
     """Parse key-value formatted text."""
     labels = []
-    blocks = content.strip().split("\n\n")
+    blocks = re.split(r"\n\s*\n", content.strip())
 
     for block in blocks:
         if not block.strip():
@@ -278,10 +328,12 @@ def _parse_key_value_txt(content: str) -> List[Label]:
         if data:
             label = Label(
                 location_line1=data.get(
-                    "location1", data.get("location_line1", data.get("località1", ""))
+                    "location1",
+                    data.get("location_line1", data.get("località1", data.get("localita1", ""))),
                 ),
                 location_line2=data.get(
-                    "location2", data.get("location_line2", data.get("località2", ""))
+                    "location2",
+                    data.get("location_line2", data.get("località2", data.get("localita2", ""))),
                 ),
                 code=data.get("code", data.get("codice", data.get("specimen_code", ""))),
                 date=data.get("date", data.get("data", data.get("collection_date", ""))),
@@ -291,7 +343,12 @@ def _parse_key_value_txt(content: str) -> List[Label]:
             )
 
             # Handle count/quantity for duplicates
-            count = _parse_count(data.get("count", data.get("quantity", data.get("quantità", 1))))
+            count = _parse_count(
+                data.get(
+                    "count",
+                    data.get("quantity", data.get("quantità", data.get("quantita", 1))),
+                )
+            )
             labels.extend(expand_label(label, count))
 
     return labels
@@ -407,6 +464,14 @@ def _structured_to_labels(data: Any, items: Any) -> List[Label]:
     Raises:
         ValueError: If a row names a site the file does not declare
     """
+    if items is None:
+        items = []
+    if not isinstance(items, list):
+        raise ValueError("labels must be a list of rows")
+    for index, row in enumerate(items, start=1):
+        if not isinstance(row, dict):
+            raise ValueError(f"row {index} is not a mapping of field to value")
+
     if has_sites(data):
         sites = parse_sites(data.get("sites"))
         defaults = data.get("defaults") or {}
@@ -460,7 +525,7 @@ def load_json(file_path: Path) -> List[Label]:
         ...
     ]
     """
-    content = file_path.read_text(encoding="utf-8")
+    content = file_path.read_text(encoding="utf-8-sig")
     data = json.loads(content)
 
     if isinstance(data, dict):
@@ -483,7 +548,7 @@ def load_yaml(file_path: Path) -> List[Label]:
             "PyYAML is required for YAML support. " "Install with: pip install pyyaml"
         )
 
-    content = file_path.read_text(encoding="utf-8")
+    content = file_path.read_text(encoding="utf-8-sig")
     data = yaml.safe_load(content)
 
     if isinstance(data, dict):
@@ -498,6 +563,11 @@ def _dataframe_to_labels(df) -> List[Label]:
     """Convert a pandas DataFrame to a list of Labels."""
     # Normalize column names
     df.columns = [str(c).strip().lower() for c in df.columns]
+    duplicated = sorted(set(df.columns[df.columns.duplicated()]))
+    if duplicated:
+        # "Code" and "code" collapse to one name; reading either would be a
+        # guess, and reading both would print a pandas Series on the label.
+        raise ValueError(f"Duplicate column heading(s): {', '.join(duplicated)}")
 
     # Accepted column names per field, in priority order. English names are
     # listed first so that a file carrying both an English and an Italian
@@ -550,7 +620,7 @@ def _dataframe_to_labels(df) -> List[Label]:
                 if value is None or (hasattr(value, "__float__") and str(value) == "nan"):
                     data[field] = ""
                 else:
-                    data[field] = str(value)
+                    data[field] = str(value).strip()
 
         label = Label(**{name: data.get(name, "") for name in Label.CONTENT_FIELDS if name in data})
 
