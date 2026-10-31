@@ -250,6 +250,12 @@ class EntomologyLabelsGUI:
                 var.set("1")
             entry = ttk.Entry(left_frame, textvariable=var)
             entry.grid(row=i, column=1, sticky=tk.EW, pady=5, padx=(5, 0))
+            # Enter adds the label from any field, so a run of specimens can
+            # be typed without reaching for the mouse.
+            entry.bind("<Return>", lambda e: self._add_label())
+            entry.bind("<KP_Enter>", lambda e: self._add_label())
+            if i == 0:
+                self._first_form_entry = entry
 
         left_frame.columnconfigure(1, weight=1)
 
@@ -260,6 +266,10 @@ class EntomologyLabelsGUI:
         ttk.Button(btn_frame, text="Add Label", command=self._add_label).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Clear Form", command=self._clear_form).pack(
             side=tk.LEFT, padx=5
+        )
+        # Wrapped: the form pane is narrow, and a clipped hint is no hint.
+        ttk.Label(left_frame, text="Tip: press Enter to add the label.", wraplength=180).grid(
+            row=len(fields) + 1, column=0, columnspan=2
         )
 
         # Right panel - Labels list
@@ -593,6 +603,8 @@ class EntomologyLabelsGUI:
                 var.set("1")
             else:
                 var.set("")
+        # Back to the first field, ready for the next specimen.
+        self._first_form_entry.focus_set()
 
     def _run_in_background(self, work, on_success, on_error, status: str) -> None:
         """Run `work` off the Tk main loop and deliver the result back on it.

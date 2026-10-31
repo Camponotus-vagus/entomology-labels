@@ -222,3 +222,19 @@ class TestGuiBehaviour:
             str(margin_px),
             f"{margin_px} {margin_px}",
         )
+
+    def test_enter_adds_the_label_and_returns_to_the_first_field(self, app):
+        app.root.update()
+        notes = app.entry_vars["notes"]
+        app.entry_vars["code"].set("N1")
+        notes.set("on moss")
+        entries = [
+            w for w in app._first_form_entry.master.winfo_children() if w.winfo_class() == "TEntry"
+        ]
+        entries[4].focus_force()
+        entries[4].event_generate("<Return>")
+        app.root.update()
+
+        assert [label.code for label in app.generator.labels] == ["N1"]
+        assert app.entry_vars["code"].get() == ""
+        assert app.root.focus_get() is app._first_form_entry
