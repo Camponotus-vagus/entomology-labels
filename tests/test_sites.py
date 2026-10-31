@@ -256,3 +256,48 @@ class TestYamlAliasExpansion:
         path.write_text(self._nested_aliases(7).replace("labels:", "junk:"), encoding="utf-8")
         with pytest.raises(ValueError, match="aliases"):
             load_site_registry(path)
+
+
+class TestRegistryFileChecks:
+    def test_an_oversized_registry_is_refused_unread(self, tmp_path, monkeypatch):
+        import entomology_labels.sites as sites_module
+
+        path = tmp_path / "sites.yaml"
+        path.write_text("sites:\n  A: {location_line1: x}\n", encoding="utf-8")
+        monkeypatch.setattr(sites_module, "MAX_FILE_SIZE_BYTES", 10)
+
+        def never(*args, **kwargs):
+            raise AssertionError("the file was read before its size was checked")
+
+        monkeypatch.setattr(type(path), "read_text", never)
+        with pytest.raises(ValueError, match="too large"):
+            load_site_registry(path)
+
+    def test_invalid_yaml_is_a_value_error(self, tmp_path):
+        path = tmp_path / "sites.yaml"
+        path.write_text("sites: [unclosed\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="not valid YAML"):
+            load_site_registry(path)
+
+    def test_a_directory_is_a_value_error(self, tmp_path):
+        folder = tmp_path / "sites.yaml"
+        folder.mkdir()
+        with pytest.raises(ValueError, match="Cannot read"):
+            load_site_registry(folder)
+
+    def test_the_cli_reports_a_bad_registry_without_a_traceback(self, tmp_path):
+        from click.testing import CliRunner
+
+        from entomology_labels.cli import cli
+
+        data = tmp_path / "labels.csv"
+        data.write_text("site,code\nA,N1\n", encoding="utf-8")
+        registry = tmp_path / "sites.yaml"
+        registry.write_text("sites: [unclosed\n", encoding="utf-8")
+
+        result = CliRunner().invoke(
+            cli, ["generate", str(data), "-o", str(tmp_path / "o.html"), "--sites", str(registry)]
+        )
+        assert result.exit_code == 1
+        assert "Cannot read sites file" in result.output
+        assert "Traceback" not in result.output

@@ -23,6 +23,7 @@ from .config import (
     LATITUDE_MIN,
     LONGITUDE_MAX,
     LONGITUDE_MIN,
+    MAX_FILE_SIZE_BYTES,
     MAX_SITES,
     SITE_ID_PATTERN,
 )
@@ -321,14 +322,30 @@ def load_site_registry(path) -> Dict[str, Site]:
     from pathlib import Path as _Path
 
     registry_path = _Path(path).expanduser()
-    text = registry_path.read_text(encoding="utf-8")
+
+    # Checked before reading, as every other input file is: the registry is
+    # read whole into memory, so an oversized file must be refused unread.
+    try:
+        size = registry_path.stat().st_size
+    except OSError as e:
+        raise ValueError(f"Cannot read site registry {registry_path}: {e}")
+    if size > MAX_FILE_SIZE_BYTES:
+        raise ValueError(f"Site registry is too large ({size} bytes): {registry_path}")
+
+    try:
+        text = registry_path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        raise ValueError(f"Cannot read site registry {registry_path}: {e}")
 
     if registry_path.suffix.lower() in (".yaml", ".yml"):
         try:
-            import yaml  # noqa: F401
+            import yaml
         except ImportError:
             raise ValueError("PyYAML is required to read a YAML site registry")
-        data = load_yaml_document(text)
+        try:
+            data = load_yaml_document(text)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Site registry is not valid YAML ({registry_path}): {e}")
     else:
         import json
 
