@@ -100,14 +100,16 @@ class CollectionEvent:
         located = self._anchoring_photos
         if not located:
             return None
-        # Longitudes are averaged as offsets from the first one, then wrapped,
-        # so a site straddling the antimeridian (179.99 and -179.99) is centred
-        # there rather than at 0 on the far side of the globe.
-        reference = located[0].longitude
-        offsets = [((p.longitude - reference + 180.0) % 360.0) - 180.0 for p in located]
-        longitude = reference + sum(offsets) / len(offsets)
-        longitude = ((longitude + 180.0) % 360.0) - 180.0
-        return (sum(p.latitude for p in located) / len(located), longitude)
+        latitude = sum(p.latitude for p in located) / len(located)
+        longitudes = [p.longitude for p in located]
+        if max(longitudes) - min(longitudes) <= 180.0:
+            return (latitude, sum(longitudes) / len(longitudes))
+        # The site straddles the antimeridian (179.99 and -179.99): a plain
+        # mean would put it at 0, on the far side of the globe. Shift the
+        # western longitudes by a turn, average, and wrap back.
+        shifted = [lon + 360.0 if lon < 0 else lon for lon in longitudes]
+        longitude = sum(shifted) / len(shifted)
+        return (latitude, longitude - 360.0 if longitude > 180.0 else longitude)
 
     @property
     def _anchoring_photos(self) -> List[PhotoRecord]:

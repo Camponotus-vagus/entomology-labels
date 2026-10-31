@@ -6,6 +6,7 @@ Provides commands for generating labels from various input formats.
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -889,8 +890,13 @@ def main():
 
 
 @cli.group()
-def photos():
+@click.pass_context
+def photos(ctx):
     """Read collection dates and coordinates from field photographs."""
+    # click runs this before a subcommand parses its own --help; asking for
+    # help needs no exifread.
+    if ctx.resilient_parsing or "--help" in sys.argv[1:]:
+        return
     # Checked once, here, rather than per file: otherwise every photograph
     # reports "could not read" and the real cause scrolls past unseen.
     try:

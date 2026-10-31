@@ -420,3 +420,7 @@ class TestReviewRegressions:
         sub.mkdir()
         (sub / "a.ORF").write_bytes(exif_builder())
         assert len(find_photos([tmp_path, sub])) == 1
+
+    def test_an_ordinary_centroid_is_exact(self):
+        events = cluster_photos([_photo(20, 9, 0, lon=12.34)])
+        assert events[0].centroid[1] == 12.34

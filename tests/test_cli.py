@@ -275,3 +275,19 @@ class TestReviewRegressions:
         result = runner.invoke(cli, ["generate", str(source), "-o", str(tmp_path / "o.html")])
         assert result.exit_code == 0
         assert "no --sites file" in result.output
+
+    def test_subcommand_help_needs_no_exifread(self, tmp_path):
+        import subprocess
+        import sys
+
+        # Block the import the way a missing package would.
+        (tmp_path / "exifread.py").write_text("raise ImportError('blocked')\n", encoding="utf-8")
+        env = dict(os.environ, PYTHONPATH=str(tmp_path))
+        result = subprocess.run(
+            [sys.executable, "-m", "entomology_labels.cli", "photos", "scan", "--help"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "--geocode" in result.stdout
