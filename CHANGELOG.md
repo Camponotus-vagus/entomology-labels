@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-31
+
+### Added
+- GUI: pressing Enter in any field of the "Add Single Label" form adds the
+  label, clears the form and returns the cursor to the first field, so a run
+  of specimens can be typed without the mouse. A hint under the buttons says
+  so.
+
+### Fixed
+- GUI: the label list no longer squeezes the entry form. Its buttons sat
+  beside the list instead of under it, so at the default window size "Clear
+  Form" was cut off, the form fields were about 60 px wide, and the paging
+  buttons were off-screen. Nothing on the tab is clipped now, at the minimum
+  or the default window size.
+- YAML label files and site registries are checked for excessive alias
+  expansion when loaded, so a small crafted file can no longer exhaust memory.
+- A site registry larger than the input size limit is refused before it is
+  read, and a registry that cannot be read or is not valid YAML is reported
+  in one line instead of a traceback.
+
+### Changed
+- The GitHub Actions used by CI and the release workflow were updated to
+  their current major versions.
+
 ## [1.3.0] - 2026-10-31
 
 ### Added
