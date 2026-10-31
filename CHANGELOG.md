@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-31
+
 ### Added
 - `photos scan` and `photos probe`: read collection dates and GPS from field
   photographs, group them into collection sites, and write a draft registry.
